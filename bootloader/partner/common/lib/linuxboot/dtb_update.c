@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2018, NVIDIA Corporation.  All Rights Reserved.
+ * Copyright (c) 2014-2017, NVIDIA Corporation.  All Rights Reserved.
  *
  * NVIDIA Corporation and its licensors retain all intellectual property and
  * proprietary rights in and to this software and related documentation.  Any
@@ -27,6 +27,9 @@
 #include <tegrabl_devicetree.h>
 #include <tegrabl_board_info.h>
 #include <tegrabl_nct.h>
+#include <tegrabl_malloc.h>
+#include <arch/tegrabl_arm64_smccc.h>
+#include <tegrabl_cache.h>
 
 #if defined(POPULATE_BOARDINFO)
 /* Add boardinfo under 'chosen' node in DTB. */
@@ -39,7 +42,7 @@ static tegrabl_error_t add_board_info(void *fdt, int nodeoffset)
 	uint32_t boardinfo[TEGRABL_LINUXBOOT_BOARD_MAX_FIELDS];
 	struct {
 		char *name;
-		tegrabl_linuxboot_board_type_t type;
+		enum tegrabl_linuxboot_board_type type;
 	} boardlist[] = {
 		{ "proc-board", TEGRABL_LINUXBOOT_BOARD_TYPE_PROCESSOR } ,
 		{ "pmu-board", TEGRABL_LINUXBOOT_BOARD_TYPE_PMU } ,
@@ -54,7 +57,7 @@ static tegrabl_error_t add_board_info(void *fdt, int nodeoffset)
 			pr_error(						\
 				"%s: Unable to set /chosen/%s (%s)\n", __func__,		\
 				(name), fdt_strerror(err));								\
-			return TEGRABL_ERROR(TEGRABL_ERR_ADD_FAILED, 0);	\
+			return TEGRABL_ERROR(TEGRABL_ERR_DT_PROP_ADD_FAILED, 0);	\
 		}																\
 	} while (0)
 
@@ -69,7 +72,7 @@ static tegrabl_error_t add_board_info(void *fdt, int nodeoffset)
 		node = tegrabl_add_subnode_if_absent(fdt, nodeoffset,
 			boardlist[idx].name);
 		if (node < 0) {
-			err = TEGRABL_ERROR(TEGRABL_ERR_ADD_FAILED, 0);
+			err = TEGRABL_ERROR(TEGRABL_ERR_DT_NODE_ADD_FAILED, 0);
 			goto fail;
 		}
 
@@ -96,9 +99,66 @@ fail:
 }
 #endif
 
+/* Add odmdata under 'chosen/plugin-manager' node in DTB. */
+static tegrabl_error_t add_odmdata_info(void *fdt, int nodeoffset)
+{
+	int err;
+	uint32_t idx;
+	int node;
+	tegrabl_error_t status = TEGRABL_NO_ERROR;
+	uint32_t odmdata = tegrabl_odmdata_get();
+	uint32_t mask;
+	uint32_t val;
+	struct odmdata_params *podmdata_list = NULL;
+	uint32_t odmdata_list_size;
+
+	TEGRABL_ASSERT(fdt);
+
+	status = tegrabl_odmdata_params_get(&podmdata_list, &odmdata_list_size);
+	if (status) {
+		goto fail;
+	}
+
+	node = tegrabl_add_subnode_if_absent(fdt, nodeoffset, "plugin-manager");
+	if (node < 0) {
+		status = TEGRABL_ERROR(TEGRABL_ERR_DT_NODE_ADD_FAILED, 1);
+		goto fail;
+	}
+
+	node = tegrabl_add_subnode_if_absent(fdt, node, "odm-data");
+	if (node < 0) {
+		status = TEGRABL_ERROR(TEGRABL_ERR_DT_NODE_ADD_FAILED, 2);
+		goto fail;
+	}
+
+	for (idx = 0; idx < odmdata_list_size; idx++) {
+		mask = podmdata_list[idx].mask;
+		val = podmdata_list[idx].val;
+		if ((odmdata & mask) != val) {
+			continue;
+		}
+
+		/* Add property */
+		err = fdt_setprop_cell(fdt, node, podmdata_list[idx].name, 1);
+		if (err < 0) {
+			pr_error("Unable to set /chosen/plugin-manager/%s (%s)\n",
+				podmdata_list[idx].name, fdt_strerror(err));
+			status = TEGRABL_ERROR(TEGRABL_ERR_DT_PROP_ADD_FAILED, 0);
+			goto fail;
+		}
+	}
+
+	pr_debug("Updated %s info to DTB\n", "odmdata");
+
+fail:
+	if (status) {
+		pr_error("Error = %d in 'add_odmdata_info'\n", status);
+	}
+	return status;
+}
+
 #define MAX_MEM_CHUNKS	20
 
-/* Update/add primary memory base & size in 'memory' node of DTB */
 static tegrabl_error_t add_memory_info(void *fdt, int nodeoffset)
 {
 	uint32_t num_memory_chunks = 0, idx;
@@ -109,15 +169,47 @@ static tegrabl_error_t add_memory_info(void *fdt, int nodeoffset)
 	int err;
 	char *name;
 
+	/*TOS In-sync structures - BEGIN*/
+	struct tos_ns_mem_map_entry_t {
+		uint64_t base;
+		uint64_t size;
+	};
+
+	struct __attribute__ ((__packed__)) tos_ns_mem_map_t {
+		uint32_t magic;
+		uint32_t ver;
+		uint32_t num;
+		uint8_t reserved[2];
+		struct tos_ns_mem_map_entry_t mappings[0];
+	};
+
+	#define TOS_NS_MEM_MAP_SIZE_MAX (sizeof(struct tos_ns_mem_map_t) \
+				+ (MAX_MEM_CHUNKS * sizeof(struct tos_ns_mem_map_entry_t)))
+	#define TOS_NS_MEM_MAP_MAGIC_VALUE (0xfeedbeef)
+	#define TOS_NS_MEM_MAP_CUR_VERSION (0x1)
+	#define SMC_FC_REGISTER_NS_DRAM_RANGES 0xBC00000C /* Fastcall For Trusty */
+	/*TOS In-sync structures - END*/
+
 	TEGRABL_ASSERT(fdt);
+
+	struct tegrabl_arm64_smc64_params regs = {
+		{SMC_FC_REGISTER_NS_DRAM_RANGES}
+	};
+
+	struct tos_ns_mem_map_t *ns_mem_map = NULL;
+	ns_mem_map = (struct tos_ns_mem_map_t *)tegrabl_calloc(1,
+			TOS_NS_MEM_MAP_SIZE_MAX);
+	if (NULL == ns_mem_map) {
+		return TEGRABL_ERROR(TEGRABL_ERR_NO_MEMORY, 0);
+	}
 
 	for (idx = 0; idx < MAX_MEM_CHUNKS; idx++) {
 		status = tegrabl_linuxboot_helper_get_info(
-					TEGRABL_LINUXBOOT_INFO_MEMORY, &idx, &memblock);
+				TEGRABL_LINUXBOOT_INFO_MEMORY, &idx, &memblock);
 
 		if ((status != TEGRABL_NO_ERROR) ||
-			(memblock.size == 0) ||
-			(num_memory_chunks >= MAX_MEM_CHUNKS)) {
+					(memblock.size == 0) ||
+					(num_memory_chunks >= MAX_MEM_CHUNKS)) {
 			break;
 		}
 
@@ -136,12 +228,42 @@ static tegrabl_error_t add_memory_info(void *fdt, int nodeoffset)
 		memblock.base = tmp;
 
 		if (memblock.size > 0) {
+			ns_mem_map->mappings[num_memory_chunks].base = memblock.base;
+			ns_mem_map->mappings[num_memory_chunks].size = memblock.size;
 			buf[num_memory_chunks * 2 + 0] = cpu_to_fdt64(memblock.base);
 			buf[num_memory_chunks * 2 + 1] = cpu_to_fdt64(memblock.size);
 			pr_info("added [base:0x%"PRIx64", size:0x%"PRIx64"] to /memory\n",
 					memblock.base, memblock.size);
 			num_memory_chunks++;
 		}
+	}
+
+	/*Following values are expected by Trusty as a SMC*/
+	ns_mem_map->magic = TOS_NS_MEM_MAP_MAGIC_VALUE;
+	ns_mem_map->ver = TOS_NS_MEM_MAP_CUR_VERSION;
+	ns_mem_map->num = num_memory_chunks;
+
+	tegrabl_arch_clean_dcache_range((uintptr_t) ns_mem_map,
+			TOS_NS_MEM_MAP_SIZE_MAX);
+
+	/* Currently, trusty only supports 32bit arguments */
+	regs.reg[1] = (uint32_t) ((uint64_t)ns_mem_map & ((1ULL << 32) - 1));
+	regs.reg[2] = (uint32_t) ((uint64_t)ns_mem_map >> 32);
+	regs.reg[3] = TOS_NS_MEM_MAP_SIZE_MAX;
+
+	tegrabl_arm64_send_smc64(&regs);
+
+	if (regs.reg[0] != 0) {
+		/*TODO: Halt here if we fail?*/
+		pr_error("WARNING: Failed to pass NS DRAM ranges to TOS\n");
+	} else {
+		pr_info("NS DRAM ranges recorded by TOS\n");
+	}
+
+	if (ns_mem_map) {
+		memset(ns_mem_map, 0, TOS_NS_MEM_MAP_SIZE_MAX);
+		tegrabl_free(ns_mem_map);
+		ns_mem_map = NULL;
 	}
 
 	/* Update the /memory node of DTB
@@ -155,7 +277,7 @@ static tegrabl_error_t add_memory_info(void *fdt, int nodeoffset)
 	if (err < 0) {
 		pr_error("Failed to update /memory/%s in DTB (%s)\n",
 				 "device_type", fdt_strerror(err));
-		err = TEGRABL_ERROR(TEGRABL_ERR_ADD_FAILED, 0);
+		err = TEGRABL_ERROR(TEGRABL_ERR_DT_PROP_ADD_FAILED, 0);
 		goto fail;
 	}
 
@@ -165,7 +287,7 @@ static tegrabl_error_t add_memory_info(void *fdt, int nodeoffset)
 		if (err < 0) {
 			pr_error("Failed to update /memory/%s in DTB (%s)\n",
 					 "reg", fdt_strerror(err));
-			err = TEGRABL_ERROR(TEGRABL_ERR_ADD_FAILED, 0);
+			err = TEGRABL_ERROR(TEGRABL_ERR_DT_PROP_ADD_FAILED, 0);
 			goto fail;
 		}
 	}
@@ -194,7 +316,7 @@ static tegrabl_error_t add_initrd_info(void *fdt, int nodeoffset)
 	ret = fdt_setprop(fdt, nodeoffset, "linux,initrd-start", &buf, sizeof(buf));
 	if (ret < 0) {
 		pr_error("Unable to set \"%s\" in FDT\n", "linux,initrd-start");
-		status = TEGRABL_ERROR(TEGRABL_ERR_ADD_FAILED, 0);
+		status = TEGRABL_ERROR(TEGRABL_ERR_DT_PROP_ADD_FAILED, 0);
 		goto fail;
 	}
 
@@ -202,7 +324,7 @@ static tegrabl_error_t add_initrd_info(void *fdt, int nodeoffset)
 	ret = fdt_setprop(fdt, nodeoffset, "linux,initrd-end", &buf, sizeof(buf));
 	if (ret < 0) {
 		pr_error("Unable to set \"%s\" in FDT\n", "linux,initrd-end");
-		status = TEGRABL_ERROR(TEGRABL_ERR_ADD_FAILED, 0);
+		status = TEGRABL_ERROR(TEGRABL_ERR_DT_PROP_ADD_FAILED, 0);
 		goto fail;
 	}
 
@@ -218,7 +340,7 @@ static tegrabl_error_t add_bpmp_info(void *fdt, int nodeoffset)
 {
 	tegrabl_error_t status = TEGRABL_NO_ERROR;
 	struct tegrabl_linuxboot_memblock memblock;
-	tegrabl_linuxboot_carveout_type_t carveout_type =
+	enum tegrabl_linuxboot_carveout_type carveout_type =
 		TEGRABL_LINUXBOOT_CARVEOUT_BPMPFW;
 	int err;
 	uint32_t buf;
@@ -242,14 +364,14 @@ static tegrabl_error_t add_bpmp_info(void *fdt, int nodeoffset)
 	buf = cpu_to_fdt32((uint32_t)memblock.base);
 	err = fdt_setprop(fdt, nodeoffset, "carveout-start", &buf, sizeof(buf));
 	if (err) {
-		status = TEGRABL_ERROR(TEGRABL_ERR_ADD_FAILED, 0);
+		status = TEGRABL_ERROR(TEGRABL_ERR_DT_PROP_ADD_FAILED, 0);
 		goto fail;
 	}
 
 	buf = cpu_to_fdt32((uint32_t)memblock.size);
 	err = fdt_setprop(fdt, nodeoffset, "carveout-size", &buf, sizeof(buf));
 	if (err) {
-		status = TEGRABL_ERROR(TEGRABL_ERR_ADD_FAILED, 0);
+		status = TEGRABL_ERROR(TEGRABL_ERR_DT_PROP_ADD_FAILED, 0);
 		goto fail;
 	}
 
@@ -336,24 +458,23 @@ static tegrabl_error_t add_bootarg_info(void *fdt, int nodeoffset)
 	int len = 0;
 	int remain = MAX_COMMAND_LINE_SIZE;
 	int err;
-	tegrabl_linuxboot_debug_console_t console;
-	bool odm_config_set;
+	enum tegrabl_linuxboot_debug_console console;
 
 	TEGRABL_ASSERT(fdt);
 
 	ptr = cmdline;
 
+	TEGRABL_LTRACE;
 	dtb_cmdline = (char *)fdt_getprop(fdt, nodeoffset, "bootargs", &len);
 	if (len <= 0) {
 		len = 0;
 		dtb_cmdline = "";
 	}
 
-	odm_config_set = tegrabl_odmdata_get_config_by_name("enable-high-speed-uart");
-
 	err = tegrabl_linuxboot_helper_get_info(
 						TEGRABL_LINUXBOOT_INFO_DEBUG_CONSOLE, NULL, &console);
-	if (((err == TEGRABL_NO_ERROR) && (console == TEGRABL_LINUXBOOT_DEBUG_CONSOLE_NONE)) || odm_config_set) {
+	if (err == TEGRABL_NO_ERROR) {
+		if (console == TEGRABL_LINUXBOOT_DEBUG_CONSOLE_NONE)
 			param_value_override(dtb_cmdline, &len, "console=", "none");
 	} else
 		pr_warn("WARN: Fail to override \"console=none\" in commandline\n");
@@ -369,7 +490,7 @@ static tegrabl_error_t add_bootarg_info(void *fdt, int nodeoffset)
 					  MAX_COMMAND_LINE_SIZE - remain + 1);
 	if (err < 0) {
 		pr_error("Failed to set bootargs in DTB (%s)\n", fdt_strerror(err));
-		status = TEGRABL_ERROR(TEGRABL_ERR_ADD_FAILED, 0);
+		status = TEGRABL_ERROR(TEGRABL_ERR_DT_PROP_ADD_FAILED, 0);
 		goto fail;
 	}
 
@@ -408,7 +529,7 @@ struct mac_addr_meta_data_type mac_addr_meta_data[MAC_ADDR_TYPE_MAX] = {
 #if defined(CONFIG_ENABLE_EEPROM)
 /* Helper function to common out MAC address installation code in DeviceTree */
 static tegrabl_error_t install_mac_addr(void *fdt, int nodeoffset,
-										mac_addr_type_t type,
+										enum mac_addr_type type,
 										char *mac_addr)
 {
 	char *chosen_prop = mac_addr_meta_data[type].chosen_prop;
@@ -419,7 +540,7 @@ static tegrabl_error_t install_mac_addr(void *fdt, int nodeoffset,
 	if (err < 0) {
 		pr_error("Failed to install %s MAC Addr in DT (%s)\n",
 				 interface, fdt_strerror(err));
-		return TEGRABL_ERROR(TEGRABL_ERR_ADD_FAILED, type);
+		return TEGRABL_ERROR(TEGRABL_ERR_DT_PROP_ADD_FAILED, type);
 	}
 
 	pr_debug("%s: %s MAC Address = %s\n", __func__, interface, mac_addr);
@@ -434,18 +555,19 @@ static tegrabl_error_t add_mac_addr_info(void *fdt, int nodeoffset)
 
 	for (i = 0; i < MAC_ADDR_TYPE_MAX; i++) {
 
-		status = tegrabl_get_mac_address(i, NULL, (uint8_t *)mac_addr);
+		status = tegrabl_get_mac_address(i, (uint8_t *)mac_addr);
 		if (status != TEGRABL_NO_ERROR) {
 			pr_error("Failed to get %s MAC address\n",
 					 mac_addr_meta_data[i].type_of_interface);
 			/* MAC Address failure is not critical enough to stop booting */
-			continue;
+			return TEGRABL_NO_ERROR;
 		}
 
 		status = install_mac_addr(fdt, nodeoffset, i, mac_addr);
 		if (status != TEGRABL_NO_ERROR) {
 			pr_error("Failed to update DT for %s MAC address\n",
 					 mac_addr_meta_data[i].type_of_interface);
+			return TEGRABL_NO_ERROR;
 		}
 	}
 
@@ -456,7 +578,7 @@ static tegrabl_error_t add_mac_addr_info(void *fdt, int nodeoffset)
 static tegrabl_error_t tegrabl_update_tos_nodes(void *fdt)
 {
 	tegrabl_error_t err = 0;
-	tegrabl_tos_type_t tos_type = 0;
+	enum tegrabl_tos_type tos_type = 0;
 	int node, fdt_err;
 
 	err = tegrabl_linuxboot_helper_get_info(TEGRABL_LINUXBOOT_INFO_SECUREOS,
@@ -471,7 +593,7 @@ static tegrabl_error_t tegrabl_update_tos_nodes(void *fdt)
 	case TEGRABL_TOS_TYPE_TLK:
 		node = fdt_path_offset(fdt, "/tlk");
 		if (node < 0) {
-			err = TEGRABL_ERROR(TEGRABL_ERR_NOT_FOUND, 0);
+			err = TEGRABL_ERROR(TEGRABL_ERR_DT_NODE_NOT_FOUND, 0);
 			goto fail;
 		}
 		break;
@@ -479,7 +601,7 @@ static tegrabl_error_t tegrabl_update_tos_nodes(void *fdt)
 	case TEGRABL_TOS_TYPE_TRUSTY:
 		node = fdt_path_offset(fdt, "/trusty");
 		if (node < 0) {
-			err = TEGRABL_ERROR(TEGRABL_ERR_NOT_FOUND, 0);
+			err = TEGRABL_ERROR(TEGRABL_ERR_DT_NODE_NOT_FOUND, 0);
 			goto fail;
 		}
 		break;
@@ -492,7 +614,7 @@ static tegrabl_error_t tegrabl_update_tos_nodes(void *fdt)
 	/* enable the node */
 	fdt_err = fdt_setprop_string(fdt, node, "status", "okay");
 	if (fdt_err < 0) {
-		err = TEGRABL_ERROR(TEGRABL_ERR_ADD_FAILED, 0);
+		err = TEGRABL_ERROR(TEGRABL_ERR_DT_PROP_ADD_FAILED, 0);
 	}
 
 fail:
@@ -504,7 +626,6 @@ static tegrabl_error_t tegrabl_add_serialno(void *fdt)
 	tegrabl_error_t err = TEGRABL_NO_ERROR;
 	char sno[SNO_SIZE + 1];
 	int fdt_err;
-	int node;
 
 	err = tegrabl_get_serial_no((uint8_t *)sno);
 	if (err != TEGRABL_NO_ERROR) {
@@ -516,81 +637,10 @@ static tegrabl_error_t tegrabl_add_serialno(void *fdt)
 	fdt_err = fdt_setprop_string(fdt, 0, "serial-number", sno);
 	if (fdt_err < 0) {
 		pr_error("Failed to add serialno in DT\n");
-		return TEGRABL_ERROR(TEGRABL_ERR_ADD_FAILED, 0);
-	}
-
-	node = fdt_path_offset(fdt, "/firmware/android");
-	if (node > 0) {
-		fdt_err = fdt_setprop_string(fdt, node, "serialno", sno);
-		if (fdt_err < 0) {
-			pr_error("Failed to add serialno in /firmware/android\n");
-			return TEGRABL_ERROR(TEGRABL_ERR_ADD_FAILED, 1);
-		}
+		return TEGRABL_ERROR(TEGRABL_ERR_DT_PROP_ADD_FAILED, 0);
 	}
 
 	return TEGRABL_NO_ERROR;
-}
-
-#if defined(CONFIG_ENABLE_PLUGIN_MANAGER)
-
-/* Add odmdata under 'chosen/plugin-manager' node in DTB. */
-static tegrabl_error_t add_odmdata_info(void *fdt, int nodeoffset)
-{
-	int err;
-	uint32_t idx;
-	int node;
-	tegrabl_error_t status = TEGRABL_NO_ERROR;
-	uint32_t odmdata = tegrabl_odmdata_get();
-	uint32_t mask;
-	uint32_t val;
-	struct odmdata_params *podmdata_list = NULL;
-	uint32_t odmdata_list_size;
-
-	TEGRABL_ASSERT(fdt);
-
-	status = tegrabl_odmdata_params_get(&podmdata_list, &odmdata_list_size);
-	if (status) {
-		goto fail;
-	}
-
-	node = tegrabl_add_subnode_if_absent(fdt, nodeoffset, "plugin-manager");
-	if (node < 0) {
-		status = TEGRABL_ERROR(TEGRABL_ERR_ADD_FAILED, 1);
-		goto fail;
-	}
-
-	node = tegrabl_add_subnode_if_absent(fdt, node, "odm-data");
-	if (node < 0) {
-		status = TEGRABL_ERROR(TEGRABL_ERR_ADD_FAILED, 2);
-		goto fail;
-	}
-
-	pr_info("Adding /chosen/plugin-manager/odm-data\n");
-
-	for (idx = 0; idx < odmdata_list_size; idx++) {
-		mask = podmdata_list[idx].mask;
-		val = podmdata_list[idx].val;
-		if ((odmdata & mask) != val) {
-			continue;
-		}
-
-		/* Add property */
-		err = fdt_setprop_cell(fdt, node, podmdata_list[idx].name, 1);
-		if (err < 0) {
-			pr_error("Unable to set /chosen/plugin-manager/%s (%s)\n",
-				podmdata_list[idx].name, fdt_strerror(err));
-			status = TEGRABL_ERROR(TEGRABL_ERR_ADD_FAILED, 0);
-			goto fail;
-		}
-	}
-
-	pr_debug("Updated %s info to DTB\n", "odmdata");
-
-fail:
-	if (status) {
-		pr_error("Error = %d in 'add_odmdata_info'\n", status);
-	}
-	return status;
 }
 
 #if defined(CONFIG_ENABLE_NCT)
@@ -609,23 +659,21 @@ static tegrabl_error_t add_tnspec_info(void *fdt, int nodeoffset)
 
 	node = tegrabl_add_subnode_if_absent(fdt, nodeoffset, "plugin-manager");
 	if (node < 0) {
-		status = TEGRABL_ERROR(TEGRABL_ERR_ADD_FAILED, 0);
+		status = TEGRABL_ERROR(TEGRABL_ERR_DT_NODE_ADD_FAILED, 0);
 		goto fail;
 	}
 
 	node = tegrabl_add_subnode_if_absent(fdt, node, "tnspec");
 	if (node < 0) {
-		status = TEGRABL_ERROR(TEGRABL_ERR_ADD_FAILED, 0);
+		status = TEGRABL_ERROR(TEGRABL_ERR_DT_NODE_ADD_FAILED, 0);
 		goto fail;
 	}
-
-	pr_info("Adding /chosen/plugin-manager/tnspec\n");
 
 	pr_debug("Adding tnspec/id: %s\n", id);
 	fdt_err = fdt_setprop_string(fdt, node, "id", id);
 	if (fdt_err < 0) {
 		pr_error("Failed to add tnspec/id in DTB\n");
-		status = TEGRABL_ERROR(TEGRABL_ERR_ADD_FAILED, 0);
+		status = TEGRABL_ERROR(TEGRABL_ERR_DT_PROP_ADD_FAILED, 0);
 		goto fail;
 	}
 
@@ -633,31 +681,12 @@ static tegrabl_error_t add_tnspec_info(void *fdt, int nodeoffset)
 	fdt_err = fdt_setprop_string(fdt, node, "config", config);
 	if (fdt_err < 0) {
 		pr_error("Failed to add tnspec/config in DTB\n");
-		status = TEGRABL_ERROR(TEGRABL_ERR_ADD_FAILED, 0);
+		status = TEGRABL_ERROR(TEGRABL_ERR_DT_PROP_ADD_FAILED, 0);
 		goto fail;
 	}
 
 fail:
 	return status;
-}
-#endif
-
-static tegrabl_error_t add_plugin_manager_ids(void *fdt, int nodeoffset)
-{
-	void *bl_fdt;
-	tegrabl_error_t err = TEGRABL_NO_ERROR;
-
-	err = tegrabl_dt_get_fdt_handle(TEGRABL_DT_BL, &bl_fdt);
-	if (err == TEGRABL_NO_ERROR) {
-		err = tegrabl_copy_plugin_manager_ids(fdt, bl_fdt, nodeoffset);
-	}
-
-	if (err != TEGRABL_NO_ERROR) {
-		pr_warn("Add plugin manager ids from board info\n");
-		err = tegrabl_add_plugin_manager_ids(fdt, nodeoffset);
-	}
-
-	return err;
 }
 #endif
 
@@ -669,15 +698,13 @@ static struct tegrabl_linuxboot_dtnode_info common_nodes[] = {
 	{ "chosen", add_board_info},
 #endif
 	{ "chosen", add_bootarg_info},
-#if defined(CONFIG_ENABLE_EEPROM)
-	{ "chosen", add_mac_addr_info},
-#endif
-#if defined(CONFIG_ENABLE_PLUGIN_MANAGER)
-	{ "chosen", add_plugin_manager_ids},
 	{ "chosen", add_odmdata_info},
 #if defined(CONFIG_ENABLE_NCT)
 	{ "chosen", add_tnspec_info},
 #endif
+#if defined(CONFIG_ENABLE_EEPROM)
+	{ "chosen", add_mac_addr_info},
+	{ "chosen", tegrabl_add_plugin_manager_ids},
 #endif
 	{ "memory", add_memory_info},
 	{ NULL, NULL},
@@ -758,11 +785,6 @@ tegrabl_error_t tegrabl_linuxboot_update_dtb(void *fdt)
 
 	/* add serial number as kernel DT property */
 	tegrabl_add_serialno(fdt);
-
-	/* plugin-manager overlay */
-#if defined(CONFIG_ENABLE_PLUGIN_MANAGER)
-	tegrabl_plugin_manager_overlay(fdt);
-#endif
 
 	pr_debug("%s: done\n", __func__);
 

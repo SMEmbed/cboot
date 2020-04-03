@@ -11,9 +11,8 @@
 #ifndef INCLUDED_TEGRABL_QSPI_FLASH_H
 #define INCLUDED_TEGRABL_QSPI_FLASH_H
 
+#include <tegrabl_qspi.h>
 #include <tegrabl_error.h>
-#include <tegrabl_gpcdma.h>
-#include <tegrabl_qspi_flash_param.h>
 
 #if defined(__cplusplus)
 extern "C"
@@ -23,36 +22,34 @@ extern "C"
 /**
  * @brief enum for dummy cycles for qspi transfers
  */
-/* macro dummy cycles */
-typedef uint32_t dummy_cycles_t;
-#define ZERO_CYCLES 0
-#define EIGHT_CYCLES 8
-#define NINE_CYCLES 9
-#define TEN_CYCLES 10
+enum dummy_cycles {
+	ZERO_CYCLES = 0,
+	EIGHT_CYCLES = 8,
+	NINE_CYCLES = 9,
+	TEN_CYCLES = 10,
+};
 
 /**
  * @brief Initializes the given QSPI flash device and QSPI controller
  *
- * @instance to know the qspi instance
- * @params a pointer to struct tegrabl_qspi_flash_platform_params
+ * @param params a pointer to struct tegrabl_mb1bct_qspi_params
  *
  * @retval TEGRABL_NO_ERROR Initialization is successful.
  */
-tegrabl_error_t tegrabl_qspi_flash_open(uint32_t instance,
-				struct tegrabl_qspi_flash_platform_params *params);
+tegrabl_error_t tegrabl_qspi_flash_open(
+				struct tegrabl_mb1bct_qspi_params *params);
 
 /**
  * @brief Re-initializes the given QSPI flash device and QSPI controller based
  *        on new set of params
  *
- * @instance to know the qspi instance
- * @params a pointer to struct tegrabl_qspi_flash_platform_params
+ * @param params a pointer to struct tegrabl_mb1bct_qspi_params
  *
  * @retval TEGRABL_NO_ERROR Initialization is successful.
  */
 
-tegrabl_error_t tegrabl_qspi_flash_reinit(uint32_t instance,
-					struct tegrabl_qspi_flash_platform_params *params);
+tegrabl_error_t tegrabl_qspi_flash_reinit(
+					struct tegrabl_mb1bct_qspi_params *params);
 
 #if defined(__cplusplus)
 }

@@ -63,9 +63,6 @@ struct hdmi_mode {
 struct monitor_data {
 	uint32_t checksum;
 	uint8_t manufacturer_code[4];
-	uint8_t monitor[14];
-	uint8_t serial_no[14];
-	uint8_t ascii[14];
 	uint32_t product_code;
 	uint32_t serial_number;
 	uint32_t production_week; /* -1 if not specified */

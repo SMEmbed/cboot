@@ -7,7 +7,7 @@ TARGET := t186
 IS_A64_MODE := 1
 
 MODULES += \
-	app/kernel_boot
+	app/android_boot
 
 # Disable shell to improve boot time kpis
 #MODULES += \

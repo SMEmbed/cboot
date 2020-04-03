@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014 - 2017, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2014 - 2015, NVIDIA CORPORATION.  All rights reserved.
  *
  * NVIDIA CORPORATION and its licensors retain all intellectual property
  * and proprietary rights in and to this software, related documentation
@@ -39,11 +39,12 @@ struct dt_meta_data {
 /**
  * @brief Types of DTBs being used.
  */
-typedef uint32_t dtb_type_t;
-#define DTB_BOOTLOADER 0
-#define DTB_KERNEL 1
+enum dtb_type {
+	DTB_BOOTLOADER,
+	DTB_KERNEL,
 	/* cardinality of this enum */
-#define DTB_COUNT 2
+	DTB_COUNT
+};
 
 /**
  * @brief Get the next node's offset
@@ -126,7 +127,7 @@ status_t dt_get_gic_intr(int nodeoffset, uint32_t *intr, uint32_t count);
  * @return The handle of fdt.
  *
  */
-void *dt_get_fdt(dtb_type_t type);
+void *dt_get_fdt(enum dtb_type type);
 
 /**
  * @brief Returns the pointer to fdt.
@@ -152,7 +153,7 @@ static inline void *dt_get_fdt_handle(void)
  * @return The pointer to fdt metadata structure
  *
  */
-struct dt_meta_data dt_get_fdt_metadata(dtb_type_t type);
+struct dt_meta_data dt_get_fdt_metadata(enum dtb_type type);
 
 /**
  * @brief Get the number of children of a node

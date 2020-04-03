@@ -1,6 +1,6 @@
 
 /*
- * Copyright (c) 2016-2018, NVIDIA Corporation.  All rights reserved.
+ * Copyright (c) 2016, NVIDIA Corporation.  All rights reserved.
  *
  * NVIDIA Corporation and its licensors retain all intellectual property
  * and proprietary rights in and to this software, related documentation
@@ -9,10 +9,8 @@
  * license agreement from NVIDIA Corporation is strictly prohibited.
  */
 
-#ifndef INCLUDED_TEGRABL_SD_CARD_H
-#define INCLUDED_TEGRABL_SD_CARD_H
+#define MODULE TEGRABL_ERR_SDMMC
 
-#include <stdint.h>
 #include <tegrabl_error.h>
 
 /**
@@ -24,6 +22,5 @@
 *
 * @return TEGRABL_NO_ERROR if success, error code if fails.
 */
-tegrabl_error_t tegrabl_sd_is_card_present(struct gpio_info *cd_gpio, bool *is_present);
-
-#endif
+tegrabl_error_t tegrabl_sd_is_card_present(uint32_t *instance,
+	bool *is_present);

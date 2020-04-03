@@ -22,10 +22,6 @@ SECTIONS
     .hash : { *(.hash) }
     .dynsym : { *(.dynsym) }
     .dynstr : { *(.dynstr) }
-    .rela.dyn : {
-         __reloc_begin = .;
-         *(.rela.dyn)
-    }
     .rel.text : { *(.rel.text) *(.rel.gnu.linkonce.t*) }
     .rela.text : { *(.rela.text) *(.rela.gnu.linkonce.t*) }
     .rel.data : { *(.rel.data) *(.rel.gnu.linkonce.d*) }
@@ -46,7 +42,6 @@ SECTIONS
     .rela.bss : { *(.rela.bss) }
     .rel.plt : { *(.rel.plt) }
     .rela.plt : { *(.rela.plt) }
-    __reloc_end = .;
     .init : { *(.init) } =0x9090
     .plt : { *(.plt) }
 

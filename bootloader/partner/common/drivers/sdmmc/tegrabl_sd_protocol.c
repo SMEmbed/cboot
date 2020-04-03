@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2018, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2016-2017, NVIDIA CORPORATION.  All rights reserved.
  *
  * NVIDIA CORPORATION and its licensors errain all intellectual property
  * and proprietary rights in and to this software, related documentation
@@ -23,52 +23,52 @@
 
 /** @brief Initializes the card by following SDMMC protocol.
  *
- *  @param hsdmmc Context information to determine the base
+ *  @param context Context information to determine the base
  *                 address of controller.
  *  @errurn TEGRABL_NO_ERROR if card is initiliazed successfully.
  */
-tegrabl_error_t sd_identify_card(struct tegrabl_sdmmc *hsdmmc)
+tegrabl_error_t sd_identify_card(sdmmc_context_t *context)
 {
 	tegrabl_error_t err = TEGRABL_NO_ERROR;
 	uint32_t cmd_arg;
 	uint32_t ocr_reg;
-	uint32_t *sdmmc_response = &(hsdmmc->response[0]);
+	uint32_t *sdmmc_response = &(context->response[0]);
 
 	/* Check if card is present and stable. */
-	pr_trace("Check card present and stable\n");
-	if (sdmmc_is_card_present(hsdmmc))
+	pr_debug("check card present and stablet\\n");
+	if (sdmmc_is_card_present(context))
 		return TEGRABL_ERR_INVALID;
 
 	/* Send command 0. */
-	pr_trace("Send command 0\n");
-	err = sdmmc_send_command(CMD_IDLE_STATE, 0, RESP_TYPE_NO_RESP, 0, hsdmmc);
+	pr_debug("send command 0\n");
+	err = sdmmc_send_command(CMD_IDLE_STATE, 0, RESP_TYPE_NO_RESP, 0, context);
 	if (err != TEGRABL_NO_ERROR) {
-		pr_error("Sending cmd 0 failed\n");
+		pr_error("sending cmd 0 failed");
 		goto fail;
 	}
 
 	/* Send command 8, get the interface condition register */
 	cmd_arg = SD_HOST_VOLTAGE_RANGE | SD_HOST_CHECK_PATTERN;
 	err = sdmmc_send_command(SD_CMD_SEND_IF_COND, cmd_arg,
-				RESP_TYPE_R7, 0, hsdmmc);
+				RESP_TYPE_R7, 0, context);
 	if (err != TEGRABL_NO_ERROR) {
-		pr_error("Sending CMD_SD_SEND_IF_COND failed\n");
+		pr_error("sending CMD_SD_SEND_IF_COND failed");
 		goto fail;
 	}
 
 	do {
 		err = sdmmc_send_command(SD_CMD_APPLICATION, cmd_arg,
-					RESP_TYPE_R1, 0, hsdmmc);
+					RESP_TYPE_R1, 0, context);
 	if (err != TEGRABL_NO_ERROR) {
-		pr_error("Sending CMD_SD_APPLICATION failed\n");
+		pr_error("sending CMD_SD_APPLICATION failed");
 		goto fail;
 	}
 
 	ocr_reg = SD_CARD_OCR_VALUE | CARD_CAPACITY_MASK;
 	err = sdmmc_send_command(SD_ACMD_SEND_OP_COND, ocr_reg,
-				 RESP_TYPE_R3, 0, hsdmmc);
+				 RESP_TYPE_R3, 0, context);
 	if (err != TEGRABL_NO_ERROR) {
-		pr_error("Sending cmd SdAppCmd_SendOcr failed\n");
+		pr_error("sending cmd SdAppCmd_SendOcr failed");
 		goto fail;
 	}
 		ocr_reg = *sdmmc_response;
@@ -80,98 +80,97 @@ tegrabl_error_t sd_identify_card(struct tegrabl_sdmmc *hsdmmc)
 	} while (!(ocr_reg & (uint32_t)(SD_CARD_POWERUP_STATUS_MASK)));
 
 	if (ocr_reg & SD_CARD_CAPACITY_MASK) {
-		hsdmmc->is_high_capacity_card = true;
+		context->is_high_capacity_card = true;
 	}
 
 	/* Request for all the available cids. */
-	err = sdmmc_send_command(CMD_ALL_SEND_CID, 0, RESP_TYPE_R2, 0, hsdmmc);
+	err = sdmmc_send_command(CMD_ALL_SEND_CID, 0, RESP_TYPE_R2, 0, context);
 	if (err != TEGRABL_NO_ERROR) {
-		pr_error("Sending CID failed");
+		pr_error("sending cid failed");
 		goto fail;
 	}
-#if defined (CONFIG_ENABLE_BLOCKDEV_DEVICE_INFO)
-	/* Store the hsdmmc by parsing cid. */
-	err = sdmmc_parse_cid(hsdmmc);
+
+	/* Store the context by parsing cid. */
+	err = sdmmc_parse_cid(context);
 	if (err != TEGRABL_NO_ERROR) {
-		pr_error("Parse CID failed\n");
+		pr_error("parse cid failed");
 		goto fail;
 	}
-#endif
 
 	/* Assign the relative card address. */
-	pr_trace("Send command 3\n");
+	pr_debug("send command 3\n");
 	err = sdmmc_send_command(CMD_SET_RELATIVE_ADDRESS, 9, RESP_TYPE_R6, 0,
-				hsdmmc);
+				context);
 	if (err != TEGRABL_NO_ERROR) {
-		pr_error("Assigning RCA failed\n");
+		pr_error("assigning rca failed");
 		goto fail;
 	}
 
 	/* Hard code one rca. */
-	pr_trace("Set RCA for the card\n");
-	hsdmmc->card_rca = *sdmmc_response;
+	pr_debug("set rca for the card\n");
+	context->card_rca = *sdmmc_response;
 
 	/* Query the csd. */
-	pr_trace("Query card specific data by command 9\n");
-	err = sdmmc_send_command(CMD_SEND_CSD, hsdmmc->card_rca, RESP_TYPE_R2,
-				 0, hsdmmc);
+	pr_debug("query card specific data by command 9\n");
+	err = sdmmc_send_command(CMD_SEND_CSD, context->card_rca, RESP_TYPE_R2,
+				 0, context);
 	if (err != TEGRABL_NO_ERROR) {
-		pr_error("Query CSD failed\n");
+		pr_error("query csd failed");
 		goto fail;
 	}
 
-	/* Store the hsdmmc by parsing csd. */
-	pr_trace("Parse CSD data\n");
-	err = sdmmc_parse_csd(hsdmmc);
+	/* Store the context by parsing csd. */
+	pr_debug("parse csd data\n");
+	err = sdmmc_parse_csd(context);
 	if (err != TEGRABL_NO_ERROR) {
-		pr_error("Parse CSD failed\n");
+		pr_error("parse csd failed");
 		goto fail;
 	}
 
 	/* Select the card for data transfer. */
-	pr_trace("Send command 7\n");
-	err = sdmmc_send_command(CMD_SELECT_DESELECT_CARD, hsdmmc->card_rca,
-			 RESP_TYPE_R1, 0, hsdmmc);
+	pr_debug("send command 7\n");
+	err = sdmmc_send_command(CMD_SELECT_DESELECT_CARD, context->card_rca,
+			 RESP_TYPE_R1, 0, context);
 	if (err != TEGRABL_NO_ERROR) {
-		pr_error("Sending cmd7 failed\n");
+		pr_error("sending cmd7 failed");
 		goto fail;
 	}
 
 	/* Check if card is in data transfer mode or not. */
-	err = sdmmc_send_command(CMD_SEND_STATUS, hsdmmc->card_rca, RESP_TYPE_R1,
-				0, hsdmmc);
+	err = sdmmc_send_command(CMD_SEND_STATUS, context->card_rca, RESP_TYPE_R1,
+				0, context);
 	if (err != TEGRABL_NO_ERROR) {
-		pr_error("Card is not in transfer mode\n");
+		pr_error("card is not in transfer mode");
 		goto fail;
 	}
 
-	err = sdmmc_card_transfer_mode(hsdmmc);
+	err = sdmmc_card_transfer_mode(context);
 	if (err != TEGRABL_NO_ERROR) {
-		pr_error("Setting card to transfer mode failed\n");
+		pr_error("setting card to transfer mode failed");
 		goto fail;
 	}
 
 	/* Send ACMD6 to Set bus width to Four bit wide.*/
-	err = sdmmc_send_command(SD_CMD_APPLICATION, hsdmmc->card_rca,
-				RESP_TYPE_R1, 0, hsdmmc);
+	err = sdmmc_send_command(SD_CMD_APPLICATION, context->card_rca,
+				RESP_TYPE_R1, 0, context);
 	if (err != TEGRABL_NO_ERROR) {
 		pr_error("Command_ApplicationCommand transfer mode\n");
 		goto fail;
 	}
 
 	err = sdmmc_send_command(SD_ACMD_SET_BUS_WIDTH, SD_BUS_WIDTH_4BIT,
-				RESP_TYPE_R1, 0, hsdmmc);
+				RESP_TYPE_R1, 0, context);
 	if (err != TEGRABL_NO_ERROR) {
 		pr_error("SdAppCmd_SetBusWidth transfer mode\n");
 		goto fail;
 	}
 
 	/* Now change the Host bus width as well */
-	hsdmmc->data_width = DATA_WIDTH_4BIT;
-	sdmmc_set_data_width(DATA_WIDTH_4BIT, hsdmmc);
+	context->data_width = DATA_WIDTH_4BIT;
+	sdmmc_set_data_width(DATA_WIDTH_4BIT, context);
 
 	/* Only data region on SD card */
-	hsdmmc->current_access_region = 0;
+	context->current_access_region = 0;
 
 fail:
 	return err;

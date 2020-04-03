@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2018, NVIDIA Corporation.  All rights reserved.
+ * Copyright (c) 2016-2017, NVIDIA Corporation.  All rights reserved.
  *
  * NVIDIA Corporation and its licensors retain all intellectual property
  * and proprietary rights in and to this software, related documentation
@@ -20,60 +20,9 @@
 #include <tegrabl_nvdisp.h>
 #include <tegrabl_display_unit.h>
 #include <tegrabl_display_dtb.h>
-#include <tegrabl_edid.h>
-#include <tegrabl_i2c.h>
-#include <tegrabl_display_soc.h>
-#include <tegrabl_display_dtb_backlight.h>
 
 /* Number of bottom rows reserved for the CURSOR_END position */
 static const uint32_t end_rows = 2;
-
-static tegrabl_error_t tegrabl_display_unit_get_edid(uint32_t du_type, struct tegrabl_display_pdata *pdata)
-{
-	struct nvdisp_mode *mode = NULL;
-	uint32_t i2c_instance;
-	tegrabl_error_t err = TEGRABL_NO_ERROR;
-
-	pr_debug("%s: entry\n", __func__);
-
-	mode = tegrabl_malloc(sizeof(struct nvdisp_mode));
-	if (mode == NULL) {
-		err = TEGRABL_ERROR(TEGRABL_ERR_NO_MEMORY, 1);
-		pr_debug("%s, memory alloc failed for mode\n", __func__);
-		goto fail;
-	}
-
-	if (du_type == DISPLAY_OUT_DP) {
-		err = tegrabl_edid_get_mode(mode, TEGRABL_MODULE_DPAUX, pdata->sor_dtb.dpaux_instance);
-	} else if (du_type == DISPLAY_OUT_HDMI) {
-		err = tegrabl_display_get_i2c(pdata->sor_dtb.sor_instance, &i2c_instance);
-		if (err != TEGRABL_NO_ERROR) {
-			goto fail;
-		}
-
-		err = tegrabl_edid_get_mode(mode, TEGRABL_MODULE_I2C, i2c_instance);
-	} else {
-		pr_error("%s: display type %d is not supported\n", __func__, du_type);
-		goto fail;
-	}
-
-	if (err != TEGRABL_NO_ERROR) {
-		pr_error("%s, get edid failed", __func__);
-		goto fail;
-	}
-
-	pdata->mode = mode;
-
-	pr_debug("%s: exit\n", __func__);
-
-	return err;
-
-fail:
-	if (mode != NULL) {
-		tegrabl_free(mode);
-	}
-	return err;
-}
 
 struct tegrabl_surface *display_unit_get_surface(
 	struct tegrabl_display_unit *du, uint32_t win_idx)
@@ -87,7 +36,7 @@ tegrabl_error_t display_unit_set_surface(struct tegrabl_display_unit *du,
 	dma_addr_t dma_addr;
 
 	if ((du == NULL) || (du->nvdisp == NULL) || (surf == NULL))
-		return TEGRABL_ERROR(TEGRABL_ERR_INVALID, 1);
+		return TEGRABL_ERROR(TEGRABL_ERR_INVALID, 0);
 
 	pr_debug("%s: du instance %d, type %d, win_id %d, surf 0x%lx\n", __func__,
 			 du->nvdisp->instance, du->type, du->win_id, (unsigned long)surf);
@@ -104,7 +53,7 @@ tegrabl_error_t display_unit_set_surface(struct tegrabl_display_unit *du,
 }
 
 struct tegrabl_display_unit *tegrabl_display_unit_init(
-	tegrabl_display_unit_type_t type, struct tegrabl_display_pdata *pdata)
+	enum tegrabl_display_unit_type type, struct tegrabl_display_pdata *pdata)
 {
 	struct tegrabl_surface *surf = NULL;
 	uint32_t count;
@@ -119,25 +68,16 @@ struct tegrabl_display_unit *tegrabl_display_unit_init(
 	du = tegrabl_malloc(sizeof(struct tegrabl_display_unit));
 	if (du == NULL) {
 		pr_debug("memory allocation failed\n");
-		err = TEGRABL_ERROR(TEGRABL_ERR_NO_MEMORY, 2);
+		err = TEGRABL_ERROR(TEGRABL_ERR_NO_MEMORY, 0);
 		goto fail;
 	}
 	du->type = type;
 	du->win_id = pdata->win_id;
 
 	pr_debug("%s: du type %d, win_id 0x%x\n", __func__, type, pdata->win_id);
-
-	if (pdata->mode == NULL) {
-		err = tegrabl_display_unit_get_edid(type, pdata);
-		if (err != TEGRABL_NO_ERROR) {
-			pr_debug("%s: edid read failed\n", __func__);
-			goto fail;
-		}
-	}
-
 	nvdisp = tegrabl_nvdisp_init(type, pdata);
 	if (nvdisp == NULL) {
-		err = TEGRABL_ERROR(TEGRABL_ERR_NOT_INITIALIZED, 6);
+		err = TEGRABL_ERROR(TEGRABL_ERR_NOT_INITIALIZED, 0);
 		goto fail;
 	}
 
@@ -147,13 +87,13 @@ struct tegrabl_display_unit *tegrabl_display_unit_init(
 	surf = tegrabl_malloc(sizeof(struct tegrabl_surface));
 	if (surf == NULL) {
 		pr_debug("memory allocation failed\n");
-		err = TEGRABL_ERROR(TEGRABL_ERR_NO_MEMORY, 3);
+		err = TEGRABL_ERROR(TEGRABL_ERR_NO_MEMORY, 0);
 		goto fail;
 	}
 
-	surf->height = pdata->mode->v_active;
-	surf->width = pdata->mode->h_active;
-	pr_debug("%s: surface height = %d, width = %d\n", __func__, surf->height, surf->width);
+	tegrabl_nvdisp_get_resolution(nvdisp, &(surf->height), &(surf->width));
+	pr_debug("%s: surface height = %d, width = %d\n", __func__, surf->height,
+			 surf->width);
 
 	err = tegrabl_surface_setup(surf);
 	if (err != TEGRABL_NO_ERROR) {
@@ -174,29 +114,16 @@ struct tegrabl_display_unit *tegrabl_display_unit_init(
 
 	tegrabl_render_text_set_rotation_angle(rotation);
 
-#if defined(CONFIG_ENABLE_EDP)
-	/*enable backlight for eDP*/
-	if ((type == DISPLAY_OUT_DP) && (pdata->dp_dtb.is_ext_dp_panel == 0)) {
-		err = tegrabl_display_panel_backlight_enable();
-		if (err != TEGRABL_NO_ERROR) {
-			goto fail;
-		}
-	}
-#endif
-
-	pr_debug("%s: exit\n", __func__);
 	return du;
 
 fail:
-	if (surf) {
+	if (surf)
 		tegrabl_free(surf);
-	}
 
-	if (du) {
+	if (du)
 		tegrabl_free(du);
-	}
 
-	pr_debug("%s: exit error\n", __func__);
+	pr_debug("%s: exit\n", __func__);
 	return NULL;
 }
 
@@ -210,7 +137,7 @@ tegrabl_error_t tegrabl_display_unit_printf(struct tegrabl_display_unit *du,
 
 	if (du == NULL) {
 		pr_error("display unit handle is null\n");
-		err = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 2);
+		err = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 0);
 		goto fail;
 	}
 
@@ -218,7 +145,7 @@ tegrabl_error_t tegrabl_display_unit_printf(struct tegrabl_display_unit *du,
 	surf = display_unit_get_surface(du, 0);
 	if (surf == NULL) {
 		pr_error("surface is not assigned\n");
-		err = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 3);
+		err = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 0);
 		goto fail;
 	}
 
@@ -249,7 +176,7 @@ tegrabl_error_t tegrabl_display_unit_show_image(struct tegrabl_display_unit *du,
 
 	if (du == NULL || du->nvdisp == NULL) {
 		pr_error("display unit or nvdisp handle is null\n");
-		err = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 4);
+		err = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 0);
 		goto fail;
 	}
 	pr_debug("%s: du instance %d, type %d, win_id %d\n", __func__,
@@ -259,7 +186,7 @@ tegrabl_error_t tegrabl_display_unit_show_image(struct tegrabl_display_unit *du,
 	surf = display_unit_get_surface(du, 0);
 	if (surf == NULL) {
 		pr_error("surface is not assigned\n");
-		err = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 5);
+		err = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 0);
 		goto fail;
 	}
 
@@ -291,7 +218,7 @@ tegrabl_error_t tegrabl_display_unit_clear(struct tegrabl_display_unit *du)
 
 	if (du == NULL || du->nvdisp == NULL) {
 		pr_error("display unit or nvdisp handle is null\n");
-		err = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 6);
+		err = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 0);
 		goto fail;
 	}
 	pr_debug("%s: du instance %d, type %d\n", __func__,
@@ -300,7 +227,7 @@ tegrabl_error_t tegrabl_display_unit_clear(struct tegrabl_display_unit *du)
 	/* get the surface, clear the contents, set text position to 0,0 */
 	surf = display_unit_get_surface(du, 0);
 	if (surf == NULL) {
-		err = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 7);
+		err = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 0);
 		goto fail;
 	}
 	tegrabl_surface_clear(surf);
@@ -330,7 +257,7 @@ tegrabl_error_t tegrabl_display_unit_ioctl(struct tegrabl_display_unit *du,
 
 	if (du == NULL) {
 		pr_error("display unit handle is null\n");
-		err = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 8);
+		err = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 0);
 		goto fail;
 	}
 
@@ -344,7 +271,7 @@ tegrabl_error_t tegrabl_display_unit_ioctl(struct tegrabl_display_unit *du,
 	case DISPLAY_UNIT_IOCTL_SET_FONT:
 		font = (struct text_font *)args;
 		if (font == NULL) {
-			err = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 9);
+			err = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 0);
 			break;
 		}
 		tegrabl_render_text_set_font(font->type, font->size);
@@ -361,7 +288,7 @@ tegrabl_error_t tegrabl_display_unit_ioctl(struct tegrabl_display_unit *du,
 		disp_params = (struct tegrabl_display_unit_params *)args;
 		surf = display_unit_get_surface(du, 0);
 		if (!surf) {
-			err = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 10);
+			err = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 0);
 			break;
 		}
 		disp_params->size = surf->size;
@@ -395,7 +322,7 @@ tegrabl_error_t tegrabl_display_unit_ioctl(struct tegrabl_display_unit *du,
 		break;
 
 	default:
-		err = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 11);
+		err = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 0);
 		break;
 	}
 fail:
@@ -412,7 +339,7 @@ tegrabl_error_t tegrabl_display_unit_shutdown(struct tegrabl_display_unit *du)
 
 	if (du == NULL || du->nvdisp == NULL) {
 		pr_error("du or nvdisp handle is null\n");
-		err = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 12);
+		err = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 0);
 		goto fail;
 	}
 

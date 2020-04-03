@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2018, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2016-2017, NVIDIA CORPORATION.  All rights reserved.
  *
  * NVIDIA Corporation and its licensors retain all intellectual property
  * and proprietary rights in and to this software, related documentation
@@ -8,7 +8,7 @@
  * license agreement from NVIDIA Corporation is strictly prohibited.
  */
 
-#define MODULE TEGRABL_ERR_PANEL
+#define MODULE TEGRABL_ERR_HDMI
 
 #include <tegrabl_debug.h>
 #include <tegrabl_error.h>
@@ -19,7 +19,9 @@
 #include <tegrabl_hdmi.h>
 #include <tegrabl_modes.h>
 #include <string.h>
+#if defined (CONFIG_ENABLE_DP)
 #include <tegrabl_dpaux.h>
+#endif
 
 #define MAX_FREQ 148500000
 #define EDID_BLOCK_SIZE 128
@@ -31,8 +33,6 @@
 #define EDID_RETRY_DELAY_US 200
 #define EDID_MAX_RETRY 10
 #define ID_MANUFACTURER_NAME 0x08
-#define DETAILED_TIMING_DESCRIPTIONS_START 0x36
-#define DETAILED_TIMING_DESCRIPTION_SIZE 18
 
 #define is_avi_m( \
 	h_size, v_size, \
@@ -40,29 +40,31 @@
 	(((h_size) * (v_avi_m)) > ((v_size) * ((h_avi_m) - 1)) &&  \
 	((h_size) * (v_avi_m)) < ((v_size) * ((h_avi_m) + 1))) \
 
-/* macro block type */
-#define BLOCK_TYPE_AUDIO 1
-#define BLOCK_TYPE_VIDEO 2
-#define BLOCK_TYPE_VENDOR_SPECIFIC 3
-#define BLOCK_TYPE_SPEAKER 4
+enum {
+	BLOCK_TYPE_AUDIO = 1,
+	BLOCK_TYPE_VIDEO,
+	BLOCK_TYPE_VENDOR_SPECIFIC,
+	BLOCK_TYPE_SPEAKER,
+};
 
 /* Only exposing supported resolutions */
-/* macro video id */
-#define VIDEO_ID_640_480_1 1
-#define VIDEO_ID_720_480_2 2
-#define VIDEO_ID_720_480_3 3
-#define VIDEO_ID_1280_720_4 4
-#define VIDEO_ID_1920_1080_16 16
-#define VIDEO_ID_720_576_17 17
-#define VIDEO_ID_720_576_18 18
-#define VIDEO_ID_1280_720_19 19
-#define VIDEO_ID_1920_1080_31 31
-#define VIDEO_ID_1920_1080_32 32
-#define VIDEO_ID_1920_1080_33 33
-#define VIDEO_ID_1920_1080_34 34
-#define VIDEO_ID_3840_2160_95 95
-#define VIDEO_ID_3840_2160_97 97
-#define VIDEO_ID_Force32 0x7FFFFFFF
+enum {
+	VIDEO_ID_640_480_1 = 1,
+	VIDEO_ID_720_480_2 = 2,
+	VIDEO_ID_720_480_3 = 3,
+	VIDEO_ID_1280_720_4 = 4,
+	VIDEO_ID_1920_1080_16 = 16,
+	VIDEO_ID_720_576_17 = 17,
+	VIDEO_ID_720_576_18 = 18,
+	VIDEO_ID_1280_720_19 = 19,
+	VIDEO_ID_1920_1080_31 = 31,
+	VIDEO_ID_1920_1080_32 = 32,
+	VIDEO_ID_1920_1080_33 = 33,
+	VIDEO_ID_1920_1080_34 = 34,
+	VIDEO_ID_3840_2160_95 = 95,
+	VIDEO_ID_3840_2160_97 = 97,
+	VIDEO_ID_Force32 = 0x7FFFFFFF,
+};
 
 #if defined (CONFIG_ENABLE_DP)
 static tegrabl_error_t dpaux_i2c_dev_read(struct tegrabl_dpaux *hdpaux,
@@ -119,16 +121,14 @@ tegrabl_error_t read_edid(uint8_t *edid, uint32_t offset, uint32_t module,
 	do {
 		checksum = 0;
 	#if defined (CONFIG_ENABLE_DP)
-		if (module == TEGRABL_MODULE_DPAUX) {
+		if (module == TEGRABL_MODULE_DPAUX)
 			err = dpaux_i2c_dev_read(hdpaux, edid, offset, EDID_BLOCK_SIZE);
-		}
 	#endif
-		if (module == TEGRABL_MODULE_I2C) {
+		if (module == TEGRABL_MODULE_I2C)
 			err = tegrabl_i2c_dev_read(hi2c, edid, offset, EDID_BLOCK_SIZE);
-		}
 		if (err != TEGRABL_NO_ERROR) {
 			pr_error("could not read edid\n");
-			err = TEGRABL_ERROR(TEGRABL_ERR_READ_FAILED, 0);
+			err = TEGRABL_ERROR(TEGRABL_ERR_READ_FAILED, 1);
 			goto fail;
 		}
 
@@ -154,7 +154,7 @@ tegrabl_error_t read_edid(uint8_t *edid, uint32_t offset, uint32_t module,
 						 reads. Previous remainder was %d. New remainder is %d \
 						 . Failed at attempt %d\n", __func__, last_checksum,
 						 checksum, attempt_cnt);
-				err = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 1);
+				err = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 0);
 				goto fail;
 			}
 			tegrabl_udelay(EDID_RETRY_DELAY_US);
@@ -199,87 +199,22 @@ bool parse_header(const uint8_t *edid)
 	return false;
 }
 
-#if defined (CONFIG_ENABLE_DISPLAY_MONITOR_INFO)
-static bool edid_is_serial_block(uint8_t *block)
-{
-	if ((block[0] == 0x00) && (block[1] == 0x00) &&
-		(block[2] == 0x00) && (block[3] == 0xff) &&
-		(block[4] == 0x00))
-		return true;
-	else
-		return false;
-}
-
-static bool edid_is_ascii_block(uint8_t *block)
-{
-	if ((block[0] == 0x00) && (block[1] == 0x00) &&
-		(block[2] == 0x00) && (block[3] == 0xfe) &&
-		(block[4] == 0x00))
-		return true;
-	else
-		return false;
-}
-
-static bool edid_is_monitor_block(uint8_t *block)
-{
-	if ((block[0] == 0x00) && (block[1] == 0x00) &&
-		(block[2] == 0x00) && (block[3] == 0xfc) &&
-		(block[4] == 0x00))
-		return true;
-	else
-		return false;
-}
-
-static void copy_string(uint8_t *c, uint8_t *s)
-{
-	uint32_t i;
-
-	c += 5;
-	for (i = 0; (i < 13 && *c != 0x0A); i++) {
-		*(s++) = *(c++);
-	}
-	*s = 0;
-
-	while (i-- && (*--s == 0x20)) {
-		*s = 0;
-	}
-}
-
 bool parse_vendor_block(const uint8_t *edid, struct monitor_data *monitor_info)
 {
-	uint8_t *block = (uint8_t *)edid + DETAILED_TIMING_DESCRIPTIONS_START;
-	uint32_t i;
-
 	edid += ID_MANUFACTURER_NAME;
 	monitor_info->manufacturer_code[0] = ((edid[0] & 0x7c) >> 2) + '@';
 	monitor_info->manufacturer_code[1] = ((edid[0] & 0x03) << 3) +
 		((edid[1] & 0xe0) >> 5) + '@';
 	monitor_info->manufacturer_code[2] = (edid[1] & 0x1f) + '@';
 	monitor_info->manufacturer_code[3] = 0;
-	pr_info("Maufacturer = %s\n", monitor_info->manufacturer_code);
-
 	monitor_info->product_code = edid[2] + (edid[3] << 8);
 	monitor_info->serial_number = edid[4] + (edid[5] << 8) +
 		(edid[6] << 16) + (edid[7] << 24);
 	monitor_info->production_year = edid[9] + 1990;
 	monitor_info->production_week = edid[8];
 
-	for (i = 0; i < 4; i++, block += DETAILED_TIMING_DESCRIPTION_SIZE) {
-		if (edid_is_serial_block(block)) {
-			copy_string(block, monitor_info->serial_no);
-			pr_info("Serial Number: %s\n", monitor_info->serial_no);
-		} else if (edid_is_ascii_block(block)) {
-			copy_string(block, monitor_info->ascii);
-			pr_info("ASCII Block: %s\n", monitor_info->ascii);
-		} else if (edid_is_monitor_block(block)) {
-			copy_string(block, monitor_info->monitor);
-			pr_info("Monitor Name: %s\n", monitor_info->monitor);
-		}
-	}
-
 	return true;
 }
-#endif
 
 bool parse_established_timings(const uint8_t *edid,
 							   struct monitor_data *monitor_info)
@@ -393,7 +328,7 @@ bool parse_standard_timings(const uint8_t *edid,
 						refresh >>= 16;
 					}
 					if (edid_refresh == refresh) {
-						add_mode(monitor_info, s_hdmi_modes[j]);
+						add_mode(monitor_info, s_hdmi_modes[i]);
 					}
 				}
 			}
@@ -697,22 +632,22 @@ tegrabl_error_t parse_edid(const uint8_t *edid, struct hdmi_mode *best_mode,
 	memcpy(best_mode, &s_1920_1080_16, sizeof(struct hdmi_mode));
 
 	if (!parse_header(edid)) {
+		status = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 1);
+		goto fail;
+	}
+
+	if (!parse_vendor_block(edid, monitor_info)) {
 		status = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 2);
 		goto fail;
 	}
-#if defined (CONFIG_ENABLE_DISPLAY_MONITOR_INFO)
-	if (!parse_vendor_block(edid, monitor_info)) {
-		status = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 3);
-		goto fail;
-	}
-#endif
+
 	if (!parse_established_timings(edid, monitor_info)) {
-		status = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 4);
+		status = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 3);
 		goto fail;
 	}
 
 	if (!parse_standard_timings(edid, monitor_info)) {
-		status = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 5);
+		status = TEGRABL_ERROR(TEGRABL_ERR_INVALID, 4);
 		goto fail;
 	}
 
@@ -721,10 +656,12 @@ tegrabl_error_t parse_edid(const uint8_t *edid, struct hdmi_mode *best_mode,
 	if (monitor_info->n_modes == 0)
 		goto fail;
 	else
-		get_best_mode(monitor_info, best_mode);
+		status = get_best_mode(monitor_info, best_mode);
 
-	pr_info("Best mode Width = %d, Height = %d, freq = %d\n",
-			best_mode->width, best_mode->height, best_mode->frequency);
+	if (status == TEGRABL_NO_ERROR) {
+		pr_info("Best mode Width = %d, Height = %d, freq = %d\n",
+				best_mode->width, best_mode->height, best_mode->frequency);
+	}
 
 fail:
 	tegrabl_free(monitor_info);
@@ -761,7 +698,7 @@ tegrabl_error_t tegrabl_edid_get_mode(struct nvdisp_mode *modes,
 	mode = tegrabl_malloc(sizeof(struct hdmi_mode));
 	if (mode == NULL) {
 		pr_error("memory allocation failed!\n");
-		status = TEGRABL_ERROR(TEGRABL_ERR_NO_MEMORY, 0);
+		status = TEGRABL_ERROR(TEGRABL_ERR_NO_MEMORY, 1);
 		goto fail;
 	}
 
@@ -774,7 +711,7 @@ tegrabl_error_t tegrabl_edid_get_mode(struct nvdisp_mode *modes,
 		}
 	} else {
 		pr_debug("%s, read edid failed, using default mode\n", __func__);
-		memcpy(mode, &s_1920_1080_16, sizeof(struct hdmi_mode));
+		memcpy(mode, &s_640_480_1, sizeof(struct hdmi_mode));
 	}
 
 	mode_from_hdmi_mode(modes, mode);

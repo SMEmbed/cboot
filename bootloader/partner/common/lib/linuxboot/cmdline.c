@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2018, NVIDIA Corporation.  All Rights Reserved.
+ * Copyright (c) 2014-2017, NVIDIA Corporation.  All Rights Reserved.
  *
  * NVIDIA Corporation and its licensors retain all intellectual property and
  * proprietary rights in and to this software and related documentation.  Any
@@ -21,7 +21,6 @@
 #include <tegrabl_io.h>
 #include <tegrabl_linuxboot.h>
 #include <tegrabl_linuxboot_helper.h>
-#include <tegrabl_odmdata_lib.h>
 
 #ifdef CONFIG_ENABLE_DISPLAY
 #include <tegrabl_display.h>
@@ -30,7 +29,7 @@
 #define TOSTR(s)       #s
 #define STRINGIFY(s)   TOSTR(s)
 
-#define COMMAND_LINE_SIZE 2048
+#define COMMAND_LINE_SIZE 1024
 
 static char s_cmdline[COMMAND_LINE_SIZE];
 
@@ -87,61 +86,38 @@ static int tegrabl_linuxboot_add_nvdumper_info(char *cmdline, int len,
 		return 0;
 }
 
-static int tegrabl_linuxboot_add_earlycon(char *cmdline, int len, char *param, void *priv)
+static int tegrabl_linuxboot_add_earlycon(char *cmdline, int len,
+										  char *param, void *priv)
 {
-	tegrabl_linuxboot_debug_console_t console;
-	bool odm_config_set;
-	uint64_t addr;
-	int8_t ret_val = 0;
-	tegrabl_error_t err;
+	enum tegrabl_linuxboot_debug_console console;
+	uint64_t early_uart_addr;
+	tegrabl_error_t status;
 
 	TEGRABL_UNUSED(priv);
 
-	if ((cmdline == NULL) || (param == NULL)) {
-		ret_val = -1;
-		goto fail;
+	if (!cmdline || !param) {
+		return -1;
 	}
 
-	/* Remove earlycon property if uart odmdata bit is set */
-	odm_config_set = tegrabl_odmdata_get_config_by_name("enable-high-speed-uart");
-	if (odm_config_set) {
-		ret_val = 0;
-		goto done;
+	if (tegrabl_linuxboot_helper_get_info(TEGRABL_LINUXBOOT_INFO_DEBUG_CONSOLE,
+			NULL, &console) != TEGRABL_NO_ERROR) {
+		return -1;
 	}
 
-	err = tegrabl_linuxboot_helper_get_info(TEGRABL_LINUXBOOT_INFO_DEBUG_CONSOLE, NULL, &console);
-	if (err != TEGRABL_NO_ERROR) {
-		ret_val = -1;
-		goto fail;
-	}
+	pr_debug("%s: console = %u\n", __func__, console);
 
 	if (console != TEGRABL_LINUXBOOT_DEBUG_CONSOLE_NONE) {
-
-#if defined(CONFIG_ENABLE_COMB_UART)
-		uint32_t mbox_addr;
-		if (console == TEGRABL_LINUXBOOT_DEBUG_CONSOLE_COMB_UART) {
-			err = tegrabl_linuxboot_helper_get_info(TEGRABL_LINUXBOOT_INFO_TCU_MBOX_ADDR, NULL, &mbox_addr);
-			if (err != TEGRABL_NO_ERROR) {
-				ret_val = -1;
-				goto fail;
-			}
-			ret_val = tegrabl_snprintf(cmdline, len, "%s=tegra_comb_uart,mmio32,0x%08x ", param, mbox_addr);
+		status = tegrabl_linuxboot_helper_get_info(
+			TEGRABL_LINUXBOOT_INFO_EARLYUART_BASE,	NULL, &early_uart_addr);
+		if (status != TEGRABL_NO_ERROR) {
+			return 0;
 		}
-#endif
-
-		if (console != TEGRABL_LINUXBOOT_DEBUG_CONSOLE_COMB_UART) {
-			err = tegrabl_linuxboot_helper_get_info(TEGRABL_LINUXBOOT_INFO_EARLYUART_BASE, NULL, &addr);
-			if (err != TEGRABL_NO_ERROR) {
-				ret_val = -1;
-				goto fail;
-			}
-			ret_val = tegrabl_snprintf(cmdline, len, "%s=uart8250,mmio32,0x%"PRIx64" ", param, addr);
-		}
+		pr_debug("%s: early_uartbase = 0x%lx\n", __func__, early_uart_addr);
+		return tegrabl_snprintf(cmdline, len, "%s=uart8250,mmio32,0x%08"PRIx64
+								" ", param, early_uart_addr);
 	}
 
-fail:
-done:
-	return ret_val;
+	return 0;
 }
 
 int tegrabl_linuxboot_add_string(char *cmdline, int len,
@@ -222,7 +198,7 @@ fail:
 static int tegrabl_linuxboot_add_secureos_name(char *cmdline, int len,
 	char *param, void *priv)
 {
-	tegrabl_tos_type_t tos_type;
+	enum tegrabl_tos_type tos_type;
 	char *tos_name = "none\0";
 
 	TEGRABL_UNUSED(priv);
@@ -249,6 +225,7 @@ static int tegrabl_linuxboot_add_secureos_name(char *cmdline, int len,
 }
 
 static struct tegrabl_linuxboot_param common_params[] = {
+	{ "memtype", tegrabl_linuxboot_add_string, "0" },
 	{ "tzram", tegrabl_linuxboot_add_carveout,
 		(void *)((uintptr_t)TEGRABL_LINUXBOOT_CARVEOUT_TOS) },
 	{ "video", tegrabl_linuxboot_add_string, "tegrafb" },
@@ -262,10 +239,8 @@ static struct tegrabl_linuxboot_param common_params[] = {
 	{ "tegra_fbmem3", tegrabl_linuxboot_add_disp_param, NULL },
 #endif
 #if !defined(CONFIG_OS_IS_L4T)
-	{ "memtype", tegrabl_linuxboot_add_string, "0" },
 	{ "androidboot.secureos", tegrabl_linuxboot_add_secureos_name, NULL },
 #endif
-	{ "usbcore.old_scheme_first", tegrabl_linuxboot_add_string, "1" },
 	{ NULL, NULL, NULL},
 };
 
@@ -533,3 +508,4 @@ char *tegrabl_linuxboot_prepare_cmdline(char *initcmdline)
 
 	return s_cmdline;
 }
+

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2018, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2016-2017, NVIDIA CORPORATION.  All rights reserved.
  *
  * NVIDIA CORPORATION and its licensors retain all intellectual property
  * and proprietary rights in and to this software, related documentation
@@ -24,18 +24,17 @@ static int integer_to_string(unsigned long long n, int sign, size_t pad,
 	do {
 		x /= radix;
 		len++;
-	} while (x > 0ULL);
+	} while (x > 0);
 
 	if (sign < 0) {
 		len++;
 	}
 
 	if (alternate_form != 0) {
-		if (radix == 8U) {
+		if (radix == 8)
 			len++;
-		} else if (radix == 16U) {
-			len += 2UL;
-		}
+		else if (radix == 16)
+			len += 2;
 	}
 
 	if (len > pad) {
@@ -52,7 +51,7 @@ static int integer_to_string(unsigned long long n, int sign, size_t pad,
 	}
 
 	/* pad */
-	while (pad > 0U) {
+	while (pad > 0) {
 		*str = padchar;
 		str++;
 		pad--;
@@ -66,16 +65,16 @@ static int integer_to_string(unsigned long long n, int sign, size_t pad,
 
 	/* prefix '0x' (hex-values) or '0' (octal-values) */
 	if (alternate_form != 0) {
-		if (radix == 8U) {
+		if (radix == 8) {
 			*str = '0';
 			str++;
 			len--;
-		} else if (radix == 16U) {
+		} else if (radix == 16) {
 			*str = '0';
 			str++;
 			*str = 'x';
 			str++;
-			len -= 2U;
+			len -= 2;
 		} else {
 			/* No Action Required */
 		}
@@ -96,7 +95,7 @@ int tegrabl_vsnprintf(char *buf, size_t size, const char *format, va_list ap)
 {
 	const char *f = format;
 	char *out = buf;
-	size_t remaining = size - 1U;
+	size_t remaining = size - 1;
 	char padchar = ' ';
 	int wrote;
 	char cur;
@@ -111,18 +110,16 @@ int tegrabl_vsnprintf(char *buf, size_t size, const char *format, va_list ap)
 	size_t len;
 	char ch;
 	int32_t temp_arg;
-	const char *temp_ptr;
-	char temp_char;
 
-	while (remaining > 0U) {
+	while (remaining > 0) {
 		wrote = 0;
 		cur = *f;
 		f++;
 
 		/* end of format */
-		if (cur == '\0') {
+		if (cur == '\0')
 			break;
-		}
+
 		/* formatted argument */
 		if (cur != '%') {
 			/* print string literals */
@@ -159,13 +156,6 @@ int tegrabl_vsnprintf(char *buf, size_t size, const char *format, va_list ap)
 				longint = 1;
 			}
 
-			if (*arg == 'z') {
-				arg++;
-#if defined(__x86_64__) || defined(__aarch64__)
-				longint = 2;
-#endif
-			}
-
 			if (*arg == 'l') {
 				arg++;
 				longint = 1;
@@ -175,7 +165,6 @@ int tegrabl_vsnprintf(char *buf, size_t size, const char *format, va_list ap)
 				}
 			}
 
-			temp_ptr = arg;
 			switch (*(arg++)) {
 			case 'i':
 			case 'd':
@@ -184,33 +173,36 @@ int tegrabl_vsnprintf(char *buf, size_t size, const char *format, va_list ap)
 			case 'p':
 			case 'x':
 			case 'X':
-				temp_char = *temp_ptr;
-				if ((temp_char == 'i') || (temp_char == 'd')) {
+				if ((*(arg - 1) == 'i') || (*(arg - 1) == 'd')) {
 					sign = 1;
 					base = 10;
-				} else if (temp_char == 'u') {
-					base = 10;
-				} else if (temp_char == 'o') {
-					base = 8;
-				} else {
-					base = 16;
 				}
+
+				else if (*(arg - 1) == 'u')
+					base = 10;
+
+				else if (*(arg - 1) == 'o')
+					base = 8;
+
+				else
+					base = 16;
+
 				if (longint == 2) {
-					long long int tmp = va_arg(ap, long long int);
+					long long int tmp = va_arg(ap, unsigned long long int);
 					if ((sign != 0) && (tmp < 0)) {
 						sign = -1;
 						tmp = -tmp;
 					}
 					val = (unsigned long long int)tmp;
 				} else if (longint == 1) {
-					long int tmp = va_arg(ap, long int);
+					long int tmp = va_arg(ap, unsigned long int);
 					if ((sign != 0) && (tmp < 0)) {
 						sign = -1;
 						tmp = -tmp;
 					}
 					val = (unsigned long int)tmp;
 				} else {
-					int tmp = va_arg(ap, int);
+					int tmp = va_arg(ap, unsigned int);
 					if ((sign != 0) && (tmp < 0)) {
 						sign = -1;
 						tmp = -tmp;
@@ -261,10 +253,10 @@ int tegrabl_vsnprintf(char *buf, size_t size, const char *format, va_list ap)
 		}
 
 		/* put this after the previous if statement (wrote == 0) */
-		if (wrote == -2) {
+		if (wrote == -2)
 			wrote = 0;
-		}
-		remaining -= (uint32_t)wrote;
+
+		remaining -= wrote;
 		out += wrote;
 	}
 

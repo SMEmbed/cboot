@@ -22,7 +22,6 @@ extern "C"
 #include <tegrabl_error.h>
 #include <tegrabl_rollback_prevention.h>
 #include <tegrabl_mb1_bct.h>
-#include <tegrabl_mb2_bct.h>
 
 #define TBOOT_CPUBL_PARAMS_VERSION 5
 

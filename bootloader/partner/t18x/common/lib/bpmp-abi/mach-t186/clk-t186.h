@@ -1,13 +1,3 @@
-/*
- * Copyright (c) 2015-2016, NVIDIA CORPORATION.  All rights reserved.
- *
- * NVIDIA CORPORATION and its licensors retain all intellectual property
- * and proprietary rights in and to this software, related documentation
- * and any modifications thereto.  Any use, reproduction, disclosure or
- * distribution of this software and related documentation without an express
- * license agreement from NVIDIA CORPORATION is strictly prohibited.
- */
-
 /** @file */
 
 #ifndef _MACH_T186_CLK_T186_H
@@ -398,11 +388,11 @@
 #define TEGRA186_CLK_SPDIF_IN 44
 /** @brief output of gate CLK_ENB_SPDIF_DOUBLER */
 #define TEGRA186_CLK_SPDIF_DOUBLER 45
-/** @brief output of mux controlled by CLK_RST_CONTROLLER_CLK_SOURCE_SPI3 */
+/**  @clkdesc{spi_clks, out, mux, CLK_RST_CONTROLLER_CLK_SOURCE_SPI3} */
 #define TEGRA186_CLK_SPI3 46
-/** @brief output of mux controlled by CLK_RST_CONTROLLER_CLK_SOURCE_I2C1 */
+/** @clkdesc{i2c_clks, out, mux, CLK_RST_CONTROLLER_CLK_SOURCE_I2C1} */
 #define TEGRA186_CLK_I2C1 47
-/** @brief output of mux controlled by CLK_RST_CONTROLLER_CLK_SOURCE_I2C5 */
+/** @clkdesc{i2c_clks, out, mux, CLK_RST_CONTROLLER_CLK_SOURCE_I2C5} */
 #define TEGRA186_CLK_I2C5 48
 /** @brief output of mux controlled by CLK_RST_CONTROLLER_CLK_SOURCE_SPI1 */
 #define TEGRA186_CLK_SPI1 49
@@ -938,16 +928,12 @@
 #define TEGRA186_CLK_I2S6_SYNC_INPUT 622
 /** @brief clock recovered from SPDIFIN input */
 #define TEGRA186_CLK_SPDIFIN_SYNC_INPUT 623
-/** @brief controls MPHY_FORCE_LS_MODE upon enable/disable */
-#define TEGRA186_CLK_MPHY_FORCE_LS_MODE	634
-/** @brief fake clock which must be enabled during FUSE burn operations to ensure adequate VDD_CORE voltage. */
-#define TEGRA186_CLK_FUSE_BURN 635
 
 /**
  * @brief subject to change
  * @details maximum clock identifier value plus one.
  */
-#define TEGRA186_CLK_CLK_MAX 636
+#define TEGRA186_CLK_CLK_MAX 624
 
 /** @} */
 

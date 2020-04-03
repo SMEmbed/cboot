@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2018, NVIDIA Corporation.  All Rights Reserved.
+ * Copyright (c) 2015-2017, NVIDIA Corporation.  All Rights Reserved.
  *
  * NVIDIA Corporation and its licensors retain all intellectual property and
  * proprietary rights in and to this software and related documentation.  Any
@@ -15,94 +15,93 @@
 #include <stdint.h>
 #include <tegrabl_error.h>
 #include <tegrabl_blockdev.h>
-#include <tegrabl_binary_types.h>
 
 /*
  * @brief specifies the reset source
  */
-/* macro tegrabl rst source */
-typedef uint32_t tegrabl_rst_source_t;
-#define RST_SOURCE_SYS_RESET_N 0U
-#define RST_SOURCE_AOWDT 1U
-#define RST_SOURCE_BCCPLEXWDT 2U
-#define RST_SOURCE_BPMPWDT 3U
-#define RST_SOURCE_SCEWDT 4U
-#define RST_SOURCE_SPEWDT 5U
-#define RST_SOURCE_APEWDT 6U
-#define RST_SOURCE_LCCPLEXWDT 7U
-#define RST_SOURCE_SENSOR 8U
-#define RST_SOURCE_AOTAG 9U
-#define RST_SOURCE_VFSENSOR 10U
-#define RST_SOURCE_MAINSWRST 11U
-#define RST_SOURCE_SC7 12U
-#define RST_SOURCE_HSM 13U
-#define RST_SOURCE_CSITE 14U
+enum tegrabl_rst_source {
+	RST_SOURCE_SYS_RESET_N,
+	RST_SOURCE_AOWDT,
+	RST_SOURCE_BCCPLEXWDT,
+	RST_SOURCE_BPMPWDT,
+	RST_SOURCE_SCEWDT,
+	RST_SOURCE_SPEWDT,
+	RST_SOURCE_APEWDT,
+	RST_SOURCE_LCCPLEXWDT,
+	RST_SOURCE_SENSOR,
+	RST_SOURCE_AOTAG,
+	RST_SOURCE_VFSENSOR,
+	RST_SOURCE_MAINSWRST,
+	RST_SOURCE_SC7,
+	RST_SOURCE_HSM,
+	RST_SOURCE_CSITE,
+};
 
 /**
  * @brief specifies boot type either normal cold boot
  * or recovery cold boot.
  */
-/* macro tegrabl boot chain type */
-typedef uint32_t tegrabl_boot_chain_type_t;
-#define TEGRABL_BOOT_CHAIN_PRIMARY 0U
-#define TEGRABL_BOOT_CHAIN_RECOVERY 1U
+enum tegrabl_boot_chain_type {
+	TEGRABL_BOOT_CHAIN_PRIMARY,
+	TEGRABL_BOOT_CHAIN_RECOVERY
+};
 
 /*
  * @brief specifies the fields in the miscreg strap register
  */
-/* macro tegrabl strap field */
-typedef uint32_t tegrabl_strap_field_t;
-#define BOOT_SELECT_FIELD 0U
-#define RAM_CODE_FIELD 1U
+enum tegrabl_strap_field {
+	BOOT_SELECT_FIELD,
+	RAM_CODE_FIELD
+};
 
 /*
  * @brief specifies the reset level
  */
-/* macro tegrabl rst level */
-typedef uint32_t tegrabl_rst_level_t;
-#define RST_LEVEL_L0 0U
-#define RST_LEVEL_L1 1U
-#define RST_LEVEL_L2 2U
-#define RST_LEVEL_WARM 3U
+enum tegrabl_rst_level {
+	RST_LEVEL_L0,
+	RST_LEVEL_L1,
+	RST_LEVEL_L2,
+	RST_LEVEL_WARM,
+};
 
 /* pmc scratch0 bit positions */
-/* macro tegrabl scratch0 flag */
-typedef uint32_t tegrabl_scratch0_flag_t;
-#define TEGRABL_PMC_SCRATCH0_FLAG_FORCED_RECOVERY 1U
-#define TEGRABL_PMC_SCRATCH0_FLAG_FASTBOOT 30U
-#define TEGRABL_PMC_SCRATCH0_FLAG_BOOT_RECOVERY_KERNEL 31U
+enum tegrabl_scratch0_flag {
+	TEGRABL_PMC_SCRATCH0_FLAG_FORCED_RECOVERY = 1,
+	TEGRABL_PMC_SCRATCH0_FLAG_FASTBOOT = 30,
+	TEGRABL_PMC_SCRATCH0_FLAG_BOOT_RECOVERY_KERNEL = 31,
+};
 
 /*
  * @brief specifies the source/recipient of doorbell ring
  */
-/* macro tegrabl dbell client */
-typedef uint32_t tegrabl_dbell_client_t;
-#define TEGRABL_DBELL_CLIENT_CCPLEX 1U		/* 0x1 */
-#define TEGRABL_DBELL_CLIENT_DPMU 2U			/* 0x2 */
-#define TEGRABL_DBELL_CLIENT_BPMP 3U			/* 0x3 */
-#define TEGRABL_DBELL_CLIENT_SPE 4U			/* 0x4 */
-#define TEGRABL_DBELL_CLIENT_SCE 5U			/* 0x5 */
-#define TEGRABL_DBELL_CLIENT_DMA 6U			/* 0x6 */
-#define TEGRABL_DBELL_CLIENT_TSECA 7U			/* 0x7 */
-#define TEGRABL_DBELL_CLIENT_TSECB 8U			/* 0x8 */
-#define TEGRABL_DBELL_CLIENT_JTAGM 9U			/* 0x9 */
-#define TEGRABL_DBELL_CLIENT_CSITE 10U		/* 0xA */
-#define TEGRABL_DBELL_CLIENT_APE 11U			/* 0xB */
-#define TEGRABL_DBELL_CLIENT_MAX 12U			/* 0xC */
+enum tegrabl_dbell_client {
+	TEGRABL_DBELL_CLIENT_CCPLEX = 1,		/* 0x1 */
+	TEGRABL_DBELL_CLIENT_DPMU = 2,			/* 0x2 */
+	TEGRABL_DBELL_CLIENT_BPMP = 3,			/* 0x3 */
+	TEGRABL_DBELL_CLIENT_SPE = 4,			/* 0x4 */
+	TEGRABL_DBELL_CLIENT_SCE = 5,			/* 0x5 */
+	TEGRABL_DBELL_CLIENT_DMA = 6,			/* 0x6 */
+	TEGRABL_DBELL_CLIENT_TSECA = 7,			/* 0x7 */
+	TEGRABL_DBELL_CLIENT_TSECB = 8,			/* 0x8 */
+	TEGRABL_DBELL_CLIENT_JTAGM = 9,			/* 0x9 */
+	TEGRABL_DBELL_CLIENT_CSITE = 10,		/* 0xA */
+	TEGRABL_DBELL_CLIENT_APE = 11,			/* 0xB */
+	TEGRABL_DBELL_CLIENT_MAX = 12,			/* 0xC */
+};
 
 /*
  * @brief specifies the target for doorbell ring
  */
-/* macro tegrabl dbell target */
-typedef uint32_t tegrabl_dbell_target_t;
-#define TEGRABL_DBELL_TARGET_DPMU 0U /* 0x0 */
-#define TEGRABL_DBELL_TARGET_CCPLEX_TZ_NS 1U
-#define TEGRABL_DBELL_TARGET_CCPLEX_TZ_S 2U
-#define TEGRABL_DBELL_TARGET_BPMP 3U /* 0x3 */
-#define TEGRABL_DBELL_TARGET_SPE 4U
-#define TEGRABL_DBELL_TARGET_SCE 5U
-#define TEGRABL_DBELL_TARGET_APE 6U /*0x6 */
-#define TEGRABL_DBELL_TARGET_MAX 7U
+enum tegrabl_dbell_target {
+	TEGRABL_DBELL_TARGET_DPMU, /* 0x0 */
+	TEGRABL_DBELL_TARGET_CCPLEX_TZ_NS,
+	TEGRABL_DBELL_TARGET_CCPLEX_TZ_S,
+	TEGRABL_DBELL_TARGET_BPMP, /* 0x3 */
+	TEGRABL_DBELL_TARGET_SPE,
+	TEGRABL_DBELL_TARGET_SCE,
+	TEGRABL_DBELL_TARGET_APE, /*0x6 */
+	TEGRABL_DBELL_TARGET_MAX,
+};
 
 /*
  * @brief struct to hold chip info read from register
@@ -122,8 +121,8 @@ struct tegrabl_chip_info {
  *
  * @return TEGRABL_NO_ERROR in case of success,
  */
-tegrabl_error_t tegrabl_dbell_trigger(tegrabl_dbell_client_t source,
-											tegrabl_dbell_target_t target);
+tegrabl_error_t tegrabl_dbell_trigger(enum tegrabl_dbell_client source,
+											enum tegrabl_dbell_target target);
 
 /**
  * @brief api to capture the ack the doorbell
@@ -132,7 +131,7 @@ tegrabl_error_t tegrabl_dbell_trigger(tegrabl_dbell_client_t source,
  *
  * @return ack status of the doorbel register
  */
-uint32_t tegrabl_dbell_ack(tegrabl_dbell_client_t client);
+uint32_t tegrabl_dbell_ack(enum tegrabl_dbell_client client);
 
 /**
  * @brief Check tegra-ap-wdt bit of odmdata 0:Tegra AP watchdog disable
@@ -162,7 +161,7 @@ tegrabl_error_t tegrabl_register_prod_settings(uint32_t *prod_settings,
  *
  * @return returns requested strap field value,
  */
-uint32_t read_miscreg_strap(tegrabl_strap_field_t fld);
+uint32_t read_miscreg_strap(enum tegrabl_strap_field fld);
 
 /**
  * @brief print rst_source and rst_level
@@ -177,8 +176,8 @@ void tegrabl_print_rst_status(void);
  *
  * @return TEGRABL_NO_ERROR in case of success,
  */
-tegrabl_error_t tegrabl_get_rst_status(tegrabl_rst_source_t *rst_source,
-									   tegrabl_rst_level_t *rst_level);
+tegrabl_error_t tegrabl_get_rst_status(enum tegrabl_rst_source *rst_source,
+									   enum tegrabl_rst_level *rst_level);
 
 /**
  * @brief find out if the device is waking up from sc8 or not
@@ -241,7 +240,7 @@ void tegrabl_pmc_reset(void);
  *  @return TEGRABL_NO_ERROR if successful.
  */
 tegrabl_error_t tegrabl_set_pmc_scratch0_flag(
-		tegrabl_scratch0_flag_t flag, bool set);
+		enum tegrabl_scratch0_flag flag, bool set);
 
 /**
  * @brief Clear scratch registers SECURE_RSV7_0 - SECURE_RSV10_1
@@ -256,7 +255,7 @@ void tegrabl_clear_pmc_rsvd(void);
  *  @return TEGRABL_NO_ERROR if successful.
  */
 tegrabl_error_t tegrabl_get_pmc_scratch0_flag(
-		tegrabl_scratch0_flag_t flag, bool *is_set);
+		enum tegrabl_scratch0_flag flag, bool *is_set);
 
 /** @brief set soc core voltage to given milli volts
  *
@@ -273,14 +272,14 @@ tegrabl_error_t tegrabl_set_soc_core_voltage(uint32_t soc_mv);
  *
  * @return appropriate boot chain type based on scratch register value.
  */
-tegrabl_boot_chain_type_t tegrabl_get_boot_chain_type(void);
+enum tegrabl_boot_chain_type tegrabl_get_boot_chain_type(void);
 
 /**
  * @brief Updates scratch register as per the boot chain type input.
  *
  * @param boot_chain Which chain of binaries to boot.
  */
-void tegrabl_set_boot_chain_type(tegrabl_boot_chain_type_t boot_chain);
+void tegrabl_set_boot_chain_type(enum tegrabl_boot_chain_type boot_chain);
 
 /**
  * @brief Resets the scratch register used for fallback mechanism.
@@ -333,7 +332,7 @@ static TEGRABL_INLINE void mb1_print_cpucore_info(void)
  *
  * @return Kernel type to be loaded
  */
-tegrabl_binary_type_t tegrabl_get_kernel_type(void);
+enum tegrabl_binary_type  tegrabl_get_kernel_type(void);
 
 /**
  * @brief Set A/B boot active slot number info into scratch register
@@ -396,37 +395,4 @@ uint32_t tegrabl_get_hsm_reset_reason(void);
  * @return bad page number
  */
 uint32_t tegrabl_get_bad_page_number(void);
-
-/**
- * @brief Detect whether running on System-FPGA. This is a dummy API that
- * 		  always returns false as FPGA is unsupported on T186 anymore.
- *
- * @return false
- */
-static inline bool tegrabl_is_fpga(void)
-{
-	return false;
-}
-
-/**
- * @brief Detect whether running on VDK
- *
- * @return true on VDK and false on other platforms
- *
- */
-static inline bool tegrabl_is_vdk(void)
-{
-	return false;
-}
-
-/**
- * @brief get chip ecid string
- *
- * @param ecid_str - pointer to buffer to save ecid string
- *        size - buffer size
- *
- * @return TEGRABL_NO_ERROR if success; error code otherwise
- */
-tegrabl_error_t tegrabl_get_ecid_str(char *ecid_str, uint32_t size);
-
 #endif /* INCLUDED_TEGRABL_SOC_MISC_H */

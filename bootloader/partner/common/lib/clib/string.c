@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2018, NVIDIA Corporation.  All rights reserved.
+ * Copyright (c) 2015-2017, NVIDIA Corporation.  All rights reserved.
  *
  * NVIDIA Corporation and its licensors retain all intellectual property and
  * proprietary rights in and to this software and related documentation.  Any
@@ -34,12 +34,11 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
-#include <clib_dma.h>
 
 typedef long word;
 
 #define lsize sizeof(word)
-#define lmask (lsize - 1U)
+#define lmask (lsize - 1)
 
 clib_dma_memcpy_t clib_dma_memcpy_callback = NULL;
 size_t clib_dma_memcpy_threshold = 0;
@@ -166,32 +165,32 @@ static void *rmemcpy(void *dest, const void *src, size_t n)
 {
 	char *d = (char *)dest + n;
 	const char *s = (const char *)src +n;
-	uint32_t len;
+	int len;
 
-	if ((n == 0U) || (dest == src)) {
+	if (n == 0 || dest == src)
 		return dest;
-	}
-	if ((src == NULL) || (dest == NULL)) {
+
+	if ((src == NULL) || (dest == NULL))
 		return NULL;
-	}
+
 	if ((((uintptr_t)d | (uintptr_t)s) & lmask) != 0U) {
 		/* src and/or dest do not align on word boundary */
-		if (((((uintptr_t)d ^ (uintptr_t)s) & lmask) != 0U) || (n < lsize)) {
+		if (((((uintptr_t)d ^ (uintptr_t)s) & lmask) != 0U) || (n < lsize))
 			len = n; /* copy the rest of the buffer with the byte mover */
-		} else {/* move ptrs up to word boundary */
+		else /* move ptrs up to word boundary */
 			len = ((uintptr_t)d & lmask);
-		}
+
 		n -= len;
-		for (; len > 0UL; len--) {
+		for (; len > 0; len--) {
 			*--d = *--s;
 		}
 	}
-	for (len = (n / lsize); len > 0UL; len--) {
+	for (len = (n / lsize); len > 0; len--) {
 		d -= lsize;
 		s -= lsize;
-		*(word *)d = *(const word *)s;
+		*(word *)d = *(word *)s;
 	}
-	for (len = (n & lmask); len > 0UL; len--) {
+	for (len = (n & lmask); len > 0; len--) {
 		*--d = *--s;
 	}
 
@@ -205,21 +204,20 @@ int memcmp(const void *s1, const void *s2, size_t n)
 	int d = 0;
 
 	for (;;) {
-		if ((d != 0) || (p1 >= end1)) {
+		if ((d != 0) || (p1 >= end1))
 			break;
-		}
 		d = (int)*p1++ - (int)*p2++;
-		if ((d != 0) || (p1 >= end1)) {
+
+		if ((d != 0) || (p1 >= end1))
 			break;
-		}
 		d = (int)*p1++ - (int)*p2++;
-		if ((d != 0) || (p1 >= end1)) {
+
+		if ((d != 0) || (p1 >= end1))
 			break;
-		}
 		d = (int)*p1++ - (int)*p2++;
-		if ((d != 0) || (p1 >= end1)) {
+
+		if ((d != 0) || (p1 >= end1))
 			break;
-		}
 		d = (int)*p1++ - (int)*p2++;
 	}
 	return d;
@@ -229,11 +227,10 @@ void* memchr(const void *s, int c, size_t n)
 {
 	const unsigned char *p = s;
 
-	if (s == NULL) {
+	if (s == NULL)
 		return NULL;
-	}
-	while (n != 0U) {
-		n--;
+
+	while (n-- != 0) {
 		if ((unsigned char)c == *p++) {
 			return (void *)(p - 1);
 		}
@@ -243,17 +240,17 @@ void* memchr(const void *s, int c, size_t n)
 
 void* memmove(void *dest, const void *src, size_t n)
 {
-	if ((dest == NULL) || (src == NULL)) {
+	if ((dest == NULL) || (src == NULL))
 		return NULL;
-	}
-	if (dest == src) {
+
+	if (dest == src)
 		return dest;
-	}
-	if ((dest < src) || (dest > (void *)((const char *)src + n))) {
+
+	if ((dest < src ) || (dest > (void *)((char *)src + n)))
 		return memcpy(dest, src, n);
-	} else {
+	else
 		return rmemcpy(dest, src, n);
-	}
+
 }
 
 char* strcat(char* dest, const char* src)
@@ -275,42 +272,25 @@ char* strcat(char* dest, const char* src)
 
 int strcmp(const char* s1, const char* s2)
 {
-	uint8_t arg;
-
-	while (*s1 == *s2) {
-		s2++;
-		if (*s1 == '\0') {
-			s1++;
+	while (*s1 == *s2++) {
+		if (*s1++ == 0)
 			return 0;
-		}
-		s1++;
 	}
 
-	arg = *(unsigned const char *)s1 - *(unsigned const char *)s2;
-	return (int32_t)arg;
+	return (*(unsigned char *)s1 - *(unsigned char *)--s2);
 }
 
 int strncmp(const char* s1, const char* s2, size_t n)
 {
-	uint8_t arg;
-
-	if (n == 0U) {
+	if (n == 0)
 		return 0;
-	}
 
 	do {
-		if (*s1 != *s2) {
-			arg = *(unsigned const char *)s1 - *(unsigned const char *)s2;
-			return (int32_t)arg;
-		}
-		s2++;
-		if (*s1 == '\0') {
-			s1++;
+		if (*s1 != *s2++)
+			return (*(unsigned char *)s1 - *(unsigned char *)--s2);
+		if (*s1++ == 0)
 			break;
-		}
-		s1++;
-		n--;
-	} while (n != 0UL);
+	} while (--n != 0);
 
 	return 0;
 }
@@ -328,7 +308,7 @@ char* strcpy(char* dest, const char* src)
 
 char* strncpy(char* dest, const char* src, size_t n)
 {
-	if (n != 0U) {
+	if (n != 0) {
 		size_t offset = 0UL;
 		char ch;
 
@@ -356,7 +336,7 @@ size_t strlen(const char* str)
 		s++;
 	}
 
-	return (size_t)(s - str);
+	return (s - str);
 }
 
 size_t strlcpy(char *dest, char const *src, size_t n)
@@ -367,11 +347,11 @@ size_t strlcpy(char *dest, char const *src, size_t n)
 		return strlen(src);
 	}
 
-	for (i = 0; ((i < (n-1U)) && (*(src+i) != '\0')); i++) {
+	for (i = 0; ((i < (n-1)) && (*(src+i) != 0)); i++) {
 		*(dest+i) = *(src+i);
 	}
 
-	dest[i] = '\0';
+	*(dest+i)= 0;
 
 	return i + strlen(src+i);
 }
@@ -383,9 +363,8 @@ char *strchr(const char *s, int c)
 	}
 
 	for (; *s != (char)c; ++s) {
-		if (*s == '\0') {
+		if (*s == '\0')
 			return NULL;
-		}
 	}
 
 	return (char *)s;
@@ -393,10 +372,10 @@ char *strchr(const char *s, int c)
 
 char *strstr(const char *str, const char *sub)
 {
-	const char *a, *b;
+	char *a, *b;
 
-	b = (const char *)sub;
-	if (*b == '\0') {
+	b = (char *)sub;
+	if (*b == 0) {
 		return (char *)str;
 	}
 
@@ -405,14 +384,14 @@ char *strstr(const char *str, const char *sub)
 			continue;
 		}
 
-		a = (const char *)str;
+		a = (char *)str;
 		while (*a++ == *b++) {
-			if (*b == '\0') {
+			if (*b == 0) {
 				return (char *)str;
 			}
 		}
 
-		b = (const char *)sub;
+		b = (char *)sub;
 	}
 
 	return (char *) 0;
@@ -443,9 +422,8 @@ size_t strspn(char const *s1, char const *s2)
 				break;
 			}
 		}
-		if (*a == '\0') {
+		if (*a == '\0')
 			return count;
-		}
 		++count;
 	}
 
@@ -473,7 +451,7 @@ char *strtok(const char *str, const char *delim)
 	static char *___strtok;
 	char *sbegin, *send;
 
-	sbegin  = (str != NULL) ? (char *)str : ___strtok;
+	sbegin  = str ? (char *)str : ___strtok;
 	if (sbegin == NULL) {
 		return NULL;
 	}
@@ -484,10 +462,8 @@ char *strtok(const char *str, const char *delim)
 		return NULL;
 	}
 	send = strpbrk(sbegin, delim);
-	if ((send != NULL) && (*send != '\0')) {
-		*send = '\0';
-		send++;
-	}
+	if (send && *send != '\0')
+		*send++ = '\0';
 	___strtok = send;
 	return sbegin;
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2018, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2015-2017, NVIDIA CORPORATION.  All rights reserved.
  *
  * NVIDIA CORPORATION and its licensors retain all intellectual property
  * and proprietary rights in and to this software, related documentation
@@ -22,37 +22,8 @@
 #include <tegrabl_timer.h>
 #include <tegrabl_console.h>
 
-#if defined(CONFIG_DEBUG_TIMESTAMP)
-	static bool enable_timestamp = true;
-#else
-	static bool enable_timestamp = false;
-#endif
-
-#if !defined(CONFIG_DEBUG_PRINT_LENGTH)
-#define CONFIG_DEBUG_PRINT_LENGTH 2048
-#endif
-
-static char msg[CONFIG_DEBUG_PRINT_LENGTH];
+static char msg[1024];
 static struct tegrabl_console *hdev;
-
-#if defined(CONFIG_ENABLE_LOGLEVEL_RUNTIME)
-uint32_t tegrabl_debug_loglevel = TEGRABL_LOG_INFO;
-
-void tegrabl_debug_set_loglevel(tegrabl_loglevel_t level)
-{
-	tegrabl_debug_loglevel = level;
-}
-#endif
-
-bool tegrabl_enable_timestamp(bool is_timestamp_enable)
-{
-	bool curr_timestamp_setting;
-
-	curr_timestamp_setting = enable_timestamp;
-	enable_timestamp = is_timestamp_enable;
-
-	return curr_timestamp_setting;
-}
 
 int tegrabl_snprintf(char *str, size_t size, const char *format, ...)
 {
@@ -65,50 +36,46 @@ int tegrabl_snprintf(char *str, size_t size, const char *format, ...)
 	return n;
 }
 
-int tegrabl_vprintf(const char *format, va_list ap)
+static int tegrabl_vprintf(const char *format, va_list ap)
 {
 	uint32_t size = 0;
-	int32_t ret = 0;
+	uint32_t ret = 0;
+
+#if defined(CONFIG_DEBUG_TIMESTAMP)
 	uint32_t i = 0;
 	uint64_t msec = 0;
-	tegrabl_error_t err = TEGRABL_NO_ERROR;
 
-	if (enable_timestamp) {
-		size = 11;
-		msec = tegrabl_get_timestamp_ms();
+	size = 11;
+	msec = tegrabl_get_timestamp_ms();
 
-		ret += tegrabl_snprintf(msg, size, "[%07d] ", (uint32_t)msec);
+	ret += tegrabl_snprintf(msg, size, "[%07d] ", (uint32_t)msec);
 
-		for (i = size; i > 5UL; i--) {
-			msg[i] = msg[i - 1UL];
-		}
-
-		msg[i] = '.';
+	for (i = size; i > 5; i--) {
+		msg[i] = msg[i - 1];
 	}
+
+	msg[i] = '.';
+#endif
 
 	ret += tegrabl_vsnprintf(msg + size, sizeof(msg) - size, format, ap);
-	err = tegrabl_console_puts(hdev, msg);
-	if (err != TEGRABL_NO_ERROR) {
-		pr_error("failed to print\n");
-	}
+	tegrabl_console_puts(hdev, msg);
+
 	return ret;
 }
 
-tegrabl_error_t tegrabl_debug_init(void)
+tegrabl_error_t tegrabl_debug_init(bool is_enable)
 {
-	tegrabl_error_t error = TEGRABL_NO_ERROR;
+	if (is_enable != true) {
+		hdev = NULL;
+		return TEGRABL_NO_ERROR;
+	}
 
 	hdev = tegrabl_console_open();
 	if (hdev == NULL) {
-		error = TEGRABL_ERROR(TEGRABL_ERR_NOT_SUPPORTED, 0);
+		return TEGRABL_ERROR(TEGRABL_ERR_NOT_SUPPORTED, 0);
 	}
 
-	return error;
-}
-
-void tegrabl_debug_deinit(void)
-{
-	hdev = NULL;
+	return TEGRABL_NO_ERROR;
 }
 
 int tegrabl_printf(const char *format, ...)
@@ -141,21 +108,7 @@ int tegrabl_putc(char ch)
 	return 1;
 }
 
-int32_t tegrabl_puts(char *str)
-{
-	tegrabl_error_t error;
-	if (hdev == NULL) {
-		return 0;
-	}
-
-	error = tegrabl_console_puts(hdev, str);
-	if (error != TEGRABL_NO_ERROR) {
-		return 0;
-	}
-	return 1;
-}
-
-int32_t tegrabl_getc(void)
+int tegrabl_getc(void)
 {
 	tegrabl_error_t error;
 	char ch;
@@ -164,25 +117,9 @@ int32_t tegrabl_getc(void)
 		return -1;
 	}
 
-	error = tegrabl_console_getchar(hdev, &ch, ~(0x0u));
+	error = tegrabl_console_getchar(hdev, &ch);
 	if (error != TEGRABL_NO_ERROR) {
 		return -1;
 	}
-	return (int32_t)ch;
-}
-
-int32_t tegrabl_getc_wait(uint64_t timeout)
-{
-	tegrabl_error_t error;
-	char ch;
-
-	if (hdev == NULL) {
-		return -1;
-	}
-
-	error = tegrabl_console_getchar(hdev, &ch, (time_t)timeout);
-	if (error != TEGRABL_NO_ERROR) {
-		return -1;
-	}
-	return (int32_t)ch;
+	return ch;
 }

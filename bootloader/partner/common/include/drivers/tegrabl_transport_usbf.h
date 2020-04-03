@@ -15,10 +15,11 @@
 #include <tegrabl_error.h>
 #include <tegrabl_timer.h>
 
-#define TEGRABL_USB_CLASS_3P 0U
-#define TEGRABL_USB_CLASS_FASTBOOT 1U
-#define TEGRABL_USB_CLASS_CHARGING 2U
-
+enum usb_product {
+	TEGRABL_USB_CLASS_3P,
+	TEGRABL_USB_CLASS_FASTBOOT,
+	TEGRABL_USB_CLASS_CHARGING
+};
 
 struct usbf_priv_info {
 	bool reopen;

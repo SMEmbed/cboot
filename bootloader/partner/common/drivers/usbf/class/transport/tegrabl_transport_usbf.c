@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2018, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2015-2017, NVIDIA CORPORATION.  All rights reserved.
  *
  * NVIDIA CORPORATION and its licensors retain all intellectual property
  * and proprietary rights in and to this software, related documentation
@@ -7,8 +7,6 @@
  * distribution of this software and related documentation without an express
  * license agreement from NVIDIA CORPORATION is strictly prohibited
  */
-
-#define MODULE TEGRABL_ERR_TRANSPORT
 
 #include <stdbool.h>
 #include <string.h>
@@ -18,7 +16,6 @@
 #include <tegrabl_timer.h>
 #include <tegrabl_debug.h>
 #include <tegrabl_addressmap.h>
-#include <tegrabl_malloc.h>
 
 #include <tegrabl_usbf.h>
 #include <tegrabl_transport_usbf.h>
@@ -27,20 +24,11 @@
 
 #include <armiscreg.h>
 
-#if defined(CONFIG_DT_SUPPORT)
-#include <tegrabl_devicetree.h>
-#include <libfdt.h>
-
-#define FASTBOOT_USB_PID_PROP_NAME "nvidia,fastboot-usb-pid"
-#define FASTBOOT_USB_VID_PROP_NAME "nvidia,fastboot-usb-vid"
-#endif
-
-#define MAX_TFR_LENGTH	 (64U * 1024U)
-#define MAX_TCM_BUFFER_SUPPORTED 1024U
+#define MAX_TFR_LENGTH	 (64 * 1024)
+#define MAX_TCM_BUFFER_SUPPORTED 1024
 
 #define MAX_SERIALNO_LEN 32
 #define USB_DESCRIPTOR_SKU_MASK	0xFU
-
 
 /**
  * USB Device Descriptor: 12 bytes as per the USB2.0 Specification
@@ -420,7 +408,7 @@ static uint8_t s_usb_serial_number[MAX_SERIALNO_LEN * 2 + 2] = {
 	[10] = '0', [11] = 0x00
 };
 
-static struct usbf_config config_3p = {
+struct usbf_config config_3p = {
 	.hs_device = USB_DESC_STATIC(s_hs_device_descr),
 	.ss_device = USB_DESC_STATIC(s_ss_device_descr),
 	.device_qual = USB_DESC_STATIC(s_device_qual),
@@ -433,7 +421,7 @@ static struct usbf_config config_3p = {
 	.serialno = USB_DESC_STATIC(s_usb_serial_number),
 };
 
-static struct usbf_config config_fastboot = {
+struct usbf_config config_fastboot = {
 	.hs_device = USB_DESC_STATIC(s_hs_device_descr),
 	.ss_device = USB_DESC_STATIC(s_ss_device_descr),
 	.device_qual = USB_DESC_STATIC(s_device_qual),
@@ -446,7 +434,8 @@ static struct usbf_config config_fastboot = {
 	.serialno = USB_DESC_STATIC(s_usb_serial_number),
 };
 
-static uint8_t *ptempbuf;
+static uint8_t tempbuf[MAX_TCM_BUFFER_SUPPORTED];
+static uint8_t *ptempbuf = (uint8_t *)&tempbuf[0];
 
 static bool is_buffer_from_tcm(const void *buf)
 {
@@ -483,7 +472,7 @@ tegrabl_error_t tegrabl_transport_usbf_send(const void *buffer,
 		} else {
 			pr_info(
 							   "ERROR: Passed TCM buffer greater than 1K\n");
-			return TEGRABL_ERROR(TEGRABL_ERR_BAD_PARAMETER, 0);
+			return TEGRABL_ERR_BAD_PARAMETER;
 		}
 	}
 
@@ -531,7 +520,7 @@ tegrabl_error_t tegrabl_transport_usbf_receive(void *buf, uint32_t length,
 		} else {
 			pr_info(
 							   "ERROR: Passed TCM buffer greater than 1K\n");
-			return TEGRABL_ERROR(TEGRABL_ERR_BAD_PARAMETER, 1);
+			return TEGRABL_ERR_BAD_PARAMETER;
 		}
 	}
 
@@ -610,30 +599,6 @@ static tegrabl_error_t tegrabl_set_pid(uint32_t class)
 	uint32_t sku;
 	tegrabl_error_t e = TEGRABL_NO_ERROR;
 
-#if defined(CONFIG_DT_SUPPORT)
-	void *fdt;
-	const uint8_t *product_id = NULL;
-
-	/* Take fastboot product id from dtb if exists */
-	if (class != TEGRABL_USB_CLASS_FASTBOOT) {
-		goto skip_dt;
-	}
-
-	e = tegrabl_dt_get_fdt_handle(TEGRABL_DT_BL, &fdt);
-	if ((e != TEGRABL_NO_ERROR) || (fdt == NULL)) {
-		goto skip_dt;
-	}
-
-	product_id = fdt_getprop(fdt, 0, FASTBOOT_USB_PID_PROP_NAME, NULL);
-
-	if (product_id) {
-		s_hs_device_descr[10] = product_id[3];
-		s_hs_device_descr[11] = product_id[2];
-		return TEGRABL_NO_ERROR;
-	}
-
-skip_dt:
-#endif
 	/** Product ID definition (2 bytes as per USB 2.0 Spec)
 	 *  idProduct(LSB - 8bits) = Chip ID for 3p, 0xFB for fastboot
 	 *  idProduct(MSB - 8bits) = (HIDFAM << 4 | SKU)
@@ -643,16 +608,15 @@ skip_dt:
 	regval  = NV_READ32(NV_ADDRESS_MAP_MISC_BASE + MISCREG_HIDREV_0);
 
 	if (class == TEGRABL_USB_CLASS_FASTBOOT) {
-		s_hs_device_descr[10] = 0xFB;
+		s_hs_device_descr[10] = s_ss_device_descr[10] = 0xFB;
 	} else {
-		s_hs_device_descr[10] =
+		s_hs_device_descr[10] = s_ss_device_descr[10] =
 				(uint8_t)NV_DRF_VAL(MISCREG, HIDREV, CHIPID, regval);
 	}
-	s_ss_device_descr[10] = s_hs_device_descr[10];
 	/* idProduct(MSB) - Read SKu value, HIDFAM and define the MSB */
 	e = tegrabl_fuse_read(FUSE_SKU_INFO, &sku, sizeof(sku));
 	if (TEGRABL_NO_ERROR != e) {
-		pr_warn("Fuse read failed\n");
+		pr_warn("%s:%d fuse read failed", __func__, __LINE__);
 		return e;
 	}
 
@@ -662,58 +626,14 @@ skip_dt:
 	return e;
 }
 
-static tegrabl_error_t tegrabl_set_vid(uint32_t class)
-{
-	tegrabl_error_t e = TEGRABL_NO_ERROR;
-#if defined(CONFIG_DT_SUPPORT)
-	void *fdt;
-	const uint8_t *vendor_id = NULL;
-
-	/* Take fastboot vendor id from dtb if exists */
-	if (class != TEGRABL_USB_CLASS_FASTBOOT) {
-		goto skip_dt;
-	}
-
-	e = tegrabl_dt_get_fdt_handle(TEGRABL_DT_BL, &fdt);
-	if ((e != TEGRABL_NO_ERROR) || (fdt == NULL)) {
-		goto skip_dt;
-	}
-
-	vendor_id = fdt_getprop(fdt, 0, FASTBOOT_USB_VID_PROP_NAME, NULL);
-
-	if (vendor_id) {
-		s_hs_device_descr[8] = vendor_id[3];
-		s_hs_device_descr[9] = vendor_id[2];
-	}
-
-skip_dt:
-#else
-	TEGRABL_UNUSED(class);
-#endif
-	return e;
-}
-
 static tegrabl_error_t transport_usbf_priv_open(bool reinit,
 	uint32_t usb_class)
 {
 	tegrabl_error_t err = TEGRABL_NO_ERROR;
-	bool default_flag = false;
-
-	ptempbuf = tegrabl_alloc(TEGRABL_HEAP_DMA, MAX_TCM_BUFFER_SUPPORTED);
-	if (ptempbuf == NULL) {
-		pr_error("Failed to allocate memory for xusb temp buffer\n");
-		err = TEGRABL_ERROR(TEGRABL_ERR_NO_MEMORY, 0);
-		goto fail;
-	}
 
 	err = tegrabl_set_pid(usb_class);
 	if (TEGRABL_NO_ERROR != err) {
-		pr_warn("Set pid failed:Use default PID\n");
-	}
-
-	err = tegrabl_set_vid(usb_class);
-	if (TEGRABL_NO_ERROR != err) {
-		pr_warn("Set vid failed:Use default VID");
+		pr_warn("%s:%d Set pid failed:Use default PID", __func__, __LINE__);
 	}
 
 	switch (usb_class) {
@@ -721,22 +641,12 @@ static tegrabl_error_t transport_usbf_priv_open(bool reinit,
 		tegrabl_usbf_setup(&config_3p);
 		break;
 	case TEGRABL_USB_CLASS_FASTBOOT:
-		err = update_usbf_serial_no();
-		if (err != TEGRABL_NO_ERROR){
-			pr_warn("Failed to fastboot usb");
-		}
-
+		update_usbf_serial_no();
 		tegrabl_usbf_setup(&config_fastboot);
 		break;
 	case TEGRABL_USB_CLASS_CHARGING:
 	default:
-		err = TEGRABL_ERROR(TEGRABL_ERR_NOT_SUPPORTED, 0);
-		default_flag = true;
-		break;
-	}
-
-	if (default_flag) {
-		goto fail;
+		return TEGRABL_ERR_NOT_SUPPORTED;
 	}
 
 	if (reinit == true) {
@@ -764,7 +674,8 @@ static tegrabl_error_t transport_usbf_priv_open(bool reinit,
 		}
 	}
 
-	pr_info("USB configuration success\n");
+	pr_info(
+					   "%s USB configuration success\n", __func__);
 fail:
 	return err;
 }
@@ -774,7 +685,8 @@ tegrabl_error_t tegrabl_transport_usbf_open(uint32_t instance, void *dev_info)
 	struct usbf_priv_info *info = (struct usbf_priv_info *)dev_info;
 
 	TEGRABL_UNUSED(instance);
-	pr_trace("Reopen = %d\n", info->reopen);
+	pr_debug(
+					   "%s reopen = %d\n", __func__, info->reopen);
 	return transport_usbf_priv_open(info->reopen, info->usb_class);
 }
 

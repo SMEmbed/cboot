@@ -10,7 +10,6 @@
 
 #ifndef INCLUDED_TEGRABL_DRF_H
 #define INCLUDED_TEGRABL_DRF_H
-#include <stdbool.h>
 
 /**
  * The following suite of macros are used for generating values to write into
@@ -49,9 +48,9 @@
 #define NV_FIELD_LOWBIT(x)      (0 ? x)
 #define NV_FIELD_HIGHBIT(x)     (1 ? x)
 #define NV_FIELD_SIZE(x)        (NV_FIELD_HIGHBIT(x) - NV_FIELD_LOWBIT(x) + 1)
-#define NV_FIELD_SHIFT(x)       ((false ? x) % 32)
+#define NV_FIELD_SHIFT(x)       ((0 ? x) % 32)
 #define NV_FIELD_MASK(x)        \
-		(0xFFFFFFFFUL >> (31 - ((true ? x) % 32) + ((false ? x) % 32)))
+		(0xFFFFFFFFUL >> (31 - ((1 ? x) % 32) + ((0 ? x) % 32)))
 #define NV_FIELD_BITS(val, x)   \
 		(((val) & NV_FIELD_MASK(x)) << NV_FIELD_SHIFT(x))
 #define NV_FIELD_SHIFTMASK(x)   (NV_FIELD_MASK(x) << (NV_FIELD_SHIFT(x)))
@@ -75,7 +74,7 @@
     @param c defined value for the field
  */
 #define NV_DRF_DEF(d,r,f,c) \
-	((uint32_t)(d##_##r##_0_##f##_##c) << NV_FIELD_SHIFT(d##_##r##_0_##f##_RANGE))
+	((d##_##r##_0_##f##_##c) << NV_FIELD_SHIFT(d##_##r##_0_##f##_RANGE))
 
 /** NV_DRF_NUM - define a new register value.
 
@@ -87,7 +86,7 @@
     @param n numeric value for the field
  */
 #define NV_DRF_NUM(d,r,f,n) \
-	(((uint32_t)(n) & NV_FIELD_MASK(d##_##r##_0_##f##_RANGE)) << \
+	(((n) & NV_FIELD_MASK(d##_##r##_0_##f##_RANGE)) << \
 	NV_FIELD_SHIFT(d##_##r##_0_##f##_RANGE))
 
 /** NV_DRF_VAL - read a field from a register.
@@ -100,7 +99,7 @@
     @param v register value
  */
 #define NV_DRF_VAL(d,r,f,v) \
-	(((uint32_t)(v) >>  NV_FIELD_SHIFT(d##_##r##_0_##f##_RANGE)) & \
+	(((v) >>  NV_FIELD_SHIFT(d##_##r##_0_##f##_RANGE)) & \
 	NV_FIELD_MASK(d##_##r##_0_##f##_RANGE))
 
 /** NV_FLD_SET_DRF_NUM - modify a register field.
@@ -205,16 +204,5 @@
 #define NV_FLD_SET_DRF64_DEF(d,r,f,c,v) \
 	(((v) & ~NV_FIELD64_SHIFTMASK(d##_##r##_0_##f##_RANGE)) | \
 	NV_DRF64_DEF(d, r, f, c))
-
-/** NV_DRF_FIELD_SIZE - get the size of a register field
-
-    @ingroup nvrm_drf
-
-    @param d register domain (hardware block)
-    @param r register name
-    @param f register field
- */
-#define NV_DRF_FIELD_SIZE(d, r, f) \
-	(NV_FIELD_SIZE(d##_##r##_0_##f##_RANGE))
 
 #endif // INCLUDED_TEGRABL_DRF_H

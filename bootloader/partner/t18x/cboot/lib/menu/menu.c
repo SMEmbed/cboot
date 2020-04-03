@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2018, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2014-2016, NVIDIA CORPORATION.  All rights reserved.
  *
  * NVIDIA CORPORATION and its licensors retain all intellectual property
  * and proprietary rights in and to this software, related documentation
@@ -13,6 +13,7 @@
 #include <tegrabl_error.h>
 #include <tegrabl_debug.h>
 #include <tegrabl_utils.h>
+#include <tegrabl_display.h>
 #include <tegrabl_keyboard.h>
 #include <tegrabl_timer.h>
 #include <menu.h>
@@ -23,8 +24,6 @@
 #include <boot.h>
 #include <kernel/thread.h>
 #include <kernel/mutex.h>
-
-#include <tegrabl_display.h>
 
 #define SINGLE_BUTTION_LONG_PRESS_TIME_MS	(1500)
 
@@ -50,7 +49,7 @@ inline void menu_unlock(void)
 	mutex_release(&menu_mutex);
 }
 
-static tegrabl_error_t display_bmp(tegrabl_image_type_t img_type)
+static tegrabl_error_t display_bmp(enum tegrabl_image_type img_type)
 {
 	tegrabl_error_t err = TEGRABL_NO_ERROR;
 	struct tegrabl_image_info image;
@@ -233,11 +232,11 @@ tegrabl_error_t menu_print(struct menu_string *ms)
  *
  * @return TEGRABL_NO_ERROR if successful
  */
-static tegrabl_error_t get_pressed_keys(key_code_t *key_code)
+static tegrabl_error_t get_pressed_keys(enum key_code *key_code)
 {
 	tegrabl_error_t ret = TEGRABL_NO_ERROR;
-	key_code_t _key_code;
-	key_event_t key_event;
+	enum key_code _key_code;
+	enum key_event key_event;
 	time_t time_lapse = 0;
 
 	ret = tegrabl_keyboard_get_key_data(&_key_code, &key_event);
@@ -281,7 +280,7 @@ static tegrabl_error_t get_pressed_keys(key_code_t *key_code)
 }
 
 static tegrabl_error_t menu_handle_key_press(struct menu *menu,
-											 key_code_t key_code,
+											 enum key_code key_code,
 											 bool *menu_next)
 {
 	tegrabl_error_t ret = TEGRABL_NO_ERROR;
@@ -333,8 +332,8 @@ tegrabl_error_t menu_draw(struct menu *menu)
 	tegrabl_error_t ret = TEGRABL_NO_ERROR;
 	status_t status = NO_ERROR;
 
-	key_code_t key_code;
-	key_event_t key_event;
+	enum key_code key_code;
+	enum key_event key_event;
 	bool is_key_press = false;
 	time_t start_time = 0;
 	bool menu_next;
@@ -423,9 +422,9 @@ fail:
 tegrabl_error_t menu_handle_on_select(struct menu *menu)
 {
 	tegrabl_error_t ret = TEGRABL_NO_ERROR;
+	struct menu_string ms;
 	uint8_t current_entry = menu->current_entry;
 	struct menu_entry *cur_menu_entry;
-	struct menu_string ms;
 
 	ms = menu->menu_entries[current_entry].ms_on_select;
 	menu_print(&ms);

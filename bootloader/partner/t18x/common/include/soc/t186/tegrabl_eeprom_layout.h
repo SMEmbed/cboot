@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2018, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2016, NVIDIA CORPORATION.  All rights reserved.
  *
  * NVIDIA CORPORATION and its licensors retain all intellectual property
  * and proprietary rights in and to this software, related documentation
@@ -127,7 +127,5 @@ struct eeprom_layout {
 #define EEPROM_REV_SZ	sizeof(((struct part_no_t *)0)->rev)
 #define EEPROM_FULL_BDID_LEN	(EEPROM_BDID_SZ + 1 + EEPROM_SKU_SZ + 1 \
 									+ EEPROM_FAB_SZ + 1 + EEPROM_REV_SZ + 1)
-#define EEPROM_CUST_SIG_SIZE   4
-#define EEPROM_CUST_TYPE_SIZE  2
 
 #endif /* TEGRABL_EEPROM_LAYOUT_H */

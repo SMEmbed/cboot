@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2018, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2015, NVIDIA CORPORATION.  All rights reserved.
  *
  * NVIDIA CORPORATION and its licensors retain all intellectual property
  * and proprietary rights in and to this software, related documentation
@@ -14,26 +14,24 @@
 #include <stdint.h>
 #include <tegrabl_error.h>
 #include <stdbool.h>
-#include <tegrabl_timer.h>
 
 /**
 * @brief Console Interface types
 */
-/* macro tegrabl console interface */
-typedef uint32_t tegrabl_console_interface_t;
-#define TEGRABL_CONSOLE_UART 0
-#define TEGRABL_CONSOLE_COMB_UART 1
-#define TEGRABL_CONSOLE_SEMIHOST 2
+enum tegrabl_console_interface {
+	TEGRABL_CONSOLE_UART,
+	TEGRABL_CONSOLE_SEMIHOST
+};
 
 /**
 * @brief Console structure
 */
 struct tegrabl_console {
-	tegrabl_console_interface_t interface;
+	enum tegrabl_console_interface interface;
 	uint32_t instance;
 	void *dev;
 	bool is_registered;
-	tegrabl_error_t (*getchar)(struct tegrabl_console *hconsole, char *ch, time_t timeout);
+	tegrabl_error_t (*getchar)(struct tegrabl_console *hconsole, char *ch);
 	tegrabl_error_t (*putchar)(struct tegrabl_console *hconsole, char ch);
 	tegrabl_error_t (*puts)(struct tegrabl_console *hconsole, char *str);
 	tegrabl_error_t (*close)(struct tegrabl_console *hconsole);
@@ -49,7 +47,7 @@ struct tegrabl_console {
 * @return  TEGRABL_NO_ERROR if success. Error code in case of failure.
 */
 tegrabl_error_t tegrabl_console_register(
-	tegrabl_console_interface_t interface, uint32_t instance, void *data);
+	enum tegrabl_console_interface interface, uint32_t instance, void *data);
 
 /**
 * @brief Opens the tegrabl_console interface.
@@ -74,12 +72,11 @@ tegrabl_error_t tegrabl_console_putchar(struct tegrabl_console *hconsole,
 *
 * @param interface Interface to the console.
 * @param ch Address at which received character has to be stored.
-* @param timeout timout in ms
 *
 * @return  TEGRABL_NO_ERROR if success. Error code in case of failure.
 */
 tegrabl_error_t tegrabl_console_getchar(struct tegrabl_console *hconsole,
-	char *ch, time_t timeout);
+	char *ch);
 
 /**
 * @brief Prints the given string on the console.
